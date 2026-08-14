@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+# `agent` - control wrapper for the local llama.cpp + OpenCode coding agent.
+#
+# Subcommands: up | down | status | code | logs | bench | test | help
+#
+# Deliberate scoping note: SearXNG and crawl4ai were already running on this box
+# as shared infrastructure from prior (hermes-max) work. These scripts VERIFY them
+# but never start, stop, or recreate them. `agent down` only stops llama-server.
+
+set -uo pipefail
+
+BOOTSTRAP_ROOT="${BOOTSTRAP_ROOT:-$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)}"
+# shellcheck source=/dev/null
+[ -f "$BOOTSTRAP_ROOT/agent.env" ] && . "$BOOTSTRAP_ROOT/agent.env"
+
+mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+API="http://$LLAMA_HOST:$LLAMA_PORT"
+
+# ---------------------------------------------------------------- output
+
+if [ -t 1 ]; then
+  C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_B=$'\033[1m'; C_0=$'\033[0m'
+else
+  C_OK=; C_WARN=; C_ERR=; C_DIM=; C_B=; C_0=
+fi
+ok()   { printf '%s  ok %s %s\n' "$C_OK" "$C_0" "$*"; }
+warn() { printf '%s  -- %s %s\n' "$C_WARN" "$C_0" "$*"; }
+bad()  { printf '%s  !! %s %s\n' "$C_ERR" "$C_0" "$*"; }
+head_() { printf '\n%s%s%s\n' "$C_B" "$*" "$C_0"; }
+dim()  { printf '%s%s%s\n' "$C_DIM" "$*" "$C_0"; }
+
+# ---------------------------------------------------------------- helpers
+
+llama_pid() {
+  [ -f "$LLAMA_PID_FILE" ] || return 1
+  local pid; pid=$(cat "$LLAMA_PID_FILE" 2>/dev/null)
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s' "$pid"
+}
+
+llama_healthy() {
+  curl -sf -m 3 "$API/health" >/dev/null 2>&1
+}
+
+vram_used_mib() {
+  nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' '
+}
+
+container_running() {
+  [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]
+}
+
+served_model_id() {
+  curl -sf -m 5 "$API/v1/models" 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])' 2>/dev/null
+}
+
+# ---------------------------------------------------------------- up
+
+cmd_up() {
+  head_ "agent up"
+
+  if llama_healthy; then
+    ok "llama-server already live at $API (idempotent no-op)"
+  else
+    # Clean up a stale pidfile from a crashed run.
+    if [ -f "$LLAMA_PID_FILE" ] && ! llama_pid >/dev/null; then
+      warn "removing stale pid file"
+      rm -f "$LLAMA_PID_FILE"
+    fi
+
+    [ -x "$LLAMA_BIN" ] || { bad "llama-server not found at $LLAMA_BIN"; return 1; }
+    [ -f "$LLAMA_MODEL" ] || { bad "model not found at $LLAMA_MODEL"; return 1; }
+
+    local free_mib
+    free_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    dim "  free VRAM before load: ${free_mib} MiB"
+
+    local args=(
+      --model "$LLAMA_MODEL"
+      --alias "$LLAMA_ALIAS"
+      --n-gpu-layers "$LLAMA_NGL"
+      -c "$LLAMA_CTX"
+      -fa on
+      --cache-type-k "$LLAMA_CACHE_TYPE"
+      --cache-type-v "$LLAMA_CACHE_TYPE"
+      --parallel 1
+      --host "$LLAMA_HOST"
+      --port "$LLAMA_PORT"
+      --jinja
+    )
+    if [ -n "$LLAMA_SPEC_TYPE" ] && [ "$LLAMA_SPEC_TYPE" != "none" ]; then
+      args+=(--spec-type "$LLAMA_SPEC_TYPE")
+    fi
+    [ -n "${LLAMA_REASONING:-}" ] && args+=(--reasoning "$LLAMA_REASONING")
+    # shellcheck disable=SC2206
+    [ -n "$LLAMA_EXTRA_ARGS" ] && args+=($LLAMA_EXTRA_ARGS)
+
+    dim "  starting: $(basename "$LLAMA_BIN") --model $(basename "$LLAMA_MODEL") -c $LLAMA_CTX --spec-type ${LLAMA_SPEC_TYPE:-none}"
+    nohup "$LLAMA_BIN" "${args[@]}" >"$LLAMA_LOG" 2>&1 &
+    echo $! > "$LLAMA_PID_FILE"
+
+    local i
+    for i in $(seq 1 180); do
+      if llama_healthy; then break; fi
+      if ! llama_pid >/dev/null; then
+        bad "llama-server died during startup - last lines of $LLAMA_LOG:"
+        tail -15 "$LLAMA_LOG" | sed 's/^/      /'
+        rm -f "$LLAMA_PID_FILE"
+        return 1
+      fi
+      sleep 1
+    done
+
+    if llama_healthy; then
+      ok "llama-server up (pid $(llama_pid)) after ${i}s"
+    else
+      bad "llama-server did not become healthy within 180s"
+      return 1
+    fi
+  fi
+
+  # Shared infra: verify only, never start.
+  if container_running "$SEARXNG_CONTAINER"; then
+    if curl -sf -m 10 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1; then
+      ok "searxng reachable at $SEARXNG_URL (pre-existing container, not managed here)"
+    else
+      warn "searxng container is up but JSON search did not respond"
+    fi
+  else
+    warn "searxng container '$SEARXNG_CONTAINER' is not running - web_search will degrade"
+  fi
+
+  if curl -sf -m 10 "$CRAWL4AI_URL/health" >/dev/null 2>&1; then
+    ok "crawl4ai reachable at $CRAWL4AI_URL (pre-existing container, not managed here)"
+  else
+    warn "crawl4ai not reachable at $CRAWL4AI_URL - web_fetch will degrade"
+  fi
+
+  cmd_status
+}
+
+# ---------------------------------------------------------------- down
+
+cmd_down() {
+  head_ "agent down"
+  local before after pid
+  before=$(vram_used_mib)
+
+  if pid=$(llama_pid); then
+    kill "$pid" 2>/dev/null
+    local i
+    for i in $(seq 1 30); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      warn "pid $pid did not exit on SIGTERM, sending SIGKILL"
+      kill -9 "$pid" 2>/dev/null
+      sleep 2
+    fi
+    rm -f "$LLAMA_PID_FILE"
+    ok "llama-server stopped (was pid $pid)"
+  else
+    rm -f "$LLAMA_PID_FILE"
+    # Targeted fallback: only match our own model/port, never a blanket pkill.
+    if pkill -f "llama-server.*--port $LLAMA_PORT" 2>/dev/null; then
+      sleep 2
+      ok "stopped an untracked llama-server on port $LLAMA_PORT"
+    else
+      ok "llama-server was not running"
+    fi
+  fi
+
+  sleep 1
+  after=$(vram_used_mib)
+  dim "  VRAM: ${before} MiB -> ${after} MiB (freed $(( ${before:-0} - ${after:-0} )) MiB)"
+
+  dim "  leaving shared containers running by design: $SEARXNG_CONTAINER, $CRAWL4AI_CONTAINER"
+}
+
+# ---------------------------------------------------------------- status
+
+cmd_status() {
+  head_ "agent status"
+
+  if llama_healthy; then
+    local mid pid
+    mid=$(served_model_id); pid=$(llama_pid || echo "untracked")
+    ok "llama-server  $API  (pid $pid)"
+    dim "    model:   ${mid:-unknown}"
+    dim "    context: $LLAMA_CTX   kv: $LLAMA_CACHE_TYPE   spec: ${LLAMA_SPEC_TYPE:-none}"
+  else
+    bad "llama-server  $API  (down)"
+  fi
+
+  if curl -sf -m 8 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1; then
+    ok "searxng       $SEARXNG_URL"
+  else
+    bad "searxng       $SEARXNG_URL"
+  fi
+
+  if curl -sf -m 8 "$CRAWL4AI_URL/health" >/dev/null 2>&1; then
+    ok "crawl4ai      $CRAWL4AI_URL"
+  else
+    bad "crawl4ai      $CRAWL4AI_URL"
+  fi
+
+  local used total base mode
+  used=$(vram_used_mib)
+  total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+  dim "    VRAM: ${used} / ${total} MiB"
+  dim "    RAM:  $(free -h | awk '/^Mem:/ {print $3" used, "$7" available"}')"
+
+  base=$(cat "$BASELINE_FILE" 2>/dev/null)
+  mode=$(effective_mode)
+  if [ -n "$base" ]; then
+    dim "    baseline: ${base} tok/s   search mode: ${mode}"
+  else
+    dim "    baseline: (unset - run 'agent bench --save')   search mode: ${mode}"
+  fi
+}
+
+# ---------------------------------------------------------------- bench
+
+# Measures decode tok/s with a single non-trivial generation.
+run_bench() {
+  local n="${1:-160}"
+  llama_healthy || { bad "llama-server is not up"; return 1; }
+  curl -s -m 300 "$API/v1/chat/completions" \
+    -H 'Content-Type: application/json' \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"Write a Python function that merges two sorted lists. Explain it briefly.\"}],\"max_tokens\":$n,\"temperature\":0}" \
+  | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+t=d.get("timings") or {}
+pt=t.get("predicted_per_second"); pp=t.get("prompt_per_second")
+if pt is None:
+    print("ERR no timings", file=sys.stderr); sys.exit(1)
+print("%.2f %.2f %d" % (pt, pp or 0, t.get("predicted_n", 0)))
+'
+}
+
+cmd_bench() {
+  head_ "agent bench"
+  local save=0
+  [ "${1:-}" = "--save" ] && save=1
+
+  local out
+  out=$(run_bench 160) || return 1
+  local tps ptps n
+  read -r tps ptps n <<< "$out"
+  ok "decode:  ${tps} tok/s   (${n} tokens generated)"
+  ok "prefill: ${ptps} tok/s"
+
+  if [ "$save" = "1" ]; then
+    echo "$tps" > "$BASELINE_FILE"
+    ok "saved as clean baseline -> $BASELINE_FILE"
+  else
+    local base
+    base=$(cat "$BASELINE_FILE" 2>/dev/null)
+    if [ -n "$base" ]; then
+      python3 -c "
+b=float('$base'); c=float('$tps'); t=float('$SPEED_THRESHOLD')
+pct=c/b
+print(f'    {pct*100:.0f}% of baseline ({b:.2f} tok/s), threshold {t*100:.0f}%')
+print('    -> search mode: ' + ('shallow' if pct < t else 'normal'))
+"
+    fi
+  fi
+}
+
+# Decides normal vs shallow from the last measured speed against the saved baseline.
+effective_mode() {
+  local base
+  base=$(cat "$BASELINE_FILE" 2>/dev/null)
+  if [ -z "$base" ] || ! llama_healthy; then
+    printf '%s' "$AGENT_SEARCH_MODE"
+    return
+  fi
+  local out tps
+  out=$(run_bench 32 2>/dev/null) || { printf '%s' "$AGENT_SEARCH_MODE"; return; }
+  read -r tps _ _ <<< "$out"
+  python3 -c "
+b=float('$base'); c=float('${tps:-0}'); t=float('$SPEED_THRESHOLD')
+print('shallow' if (b>0 and c/b < t) else 'normal')
+" 2>/dev/null || printf '%s' "$AGENT_SEARCH_MODE"
+}
+
+# ---------------------------------------------------------------- code / logs / test
+
+cmd_code() {
+  llama_healthy || { bad "llama-server is not up - run 'agent up' first"; return 1; }
+  command -v opencode >/dev/null || { bad "opencode is not installed"; return 1; }
+  # Export the measured search mode so the MCP server picks it up.
+  AGENT_SEARCH_MODE=$(effective_mode)
+  export AGENT_SEARCH_MODE
+  exec opencode "$@"
+}
+
+cmd_logs() {
+  if [ "${1:-}" = "-f" ]; then
+    tail -f "$LLAMA_LOG"
+  else
+    tail -n "${1:-60}" "$LLAMA_LOG"
+  fi
+}
+
+cmd_test() {
+  head_ "agent test"
+  local fails=0
+
+  llama_healthy && ok "llama-server /health" || { bad "llama-server /health"; fails=$((fails+1)); }
+
+  local mid; mid=$(served_model_id)
+  [ -n "$mid" ] && ok "/v1/models -> $mid" || { bad "/v1/models"; fails=$((fails+1)); }
+
+  local reply
+  reply=$(curl -s -m 120 "$API/v1/chat/completions" -H 'Content-Type: application/json' \
+    -d '{"messages":[{"role":"user","content":"Reply with the single word: READY"}],"max_tokens":400,"temperature":0}' \
+    | python3 -c 'import json,sys; m=json.load(sys.stdin)["choices"][0]["message"]; print((m.get("content") or "").strip()[:60])' 2>/dev/null)
+  [ -n "$reply" ] && ok "completion -> \"$reply\"" || { bad "completion returned empty"; fails=$((fails+1)); }
+
+  curl -sf -m 10 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1 \
+    && ok "searxng JSON search" || { bad "searxng JSON search"; fails=$((fails+1)); }
+
+  curl -sf -m 10 "$CRAWL4AI_URL/health" >/dev/null 2>&1 \
+    && ok "crawl4ai /health" || { bad "crawl4ai /health"; fails=$((fails+1)); }
+
+  # Note: the initialize response also contains the string "tools" (in capabilities),
+  # so match the tools/list reply specifically by its id and tool names.
+  local mcp_names
+  mcp_names=$(printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"agent-test","version":"1"}}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+    | timeout 60 node "$BOOTSTRAP_ROOT/mcp/search-server.mjs" 2>/dev/null \
+    | python3 -c '
+import json,sys
+for line in sys.stdin:
+    line=line.strip()
+    if not line: continue
+    d=json.loads(line)
+    if d.get("id")==2:
+        print(",".join(t["name"] for t in d["result"]["tools"]))
+' 2>/dev/null)
+  [ "$mcp_names" = "web_search,web_fetch" ] \
+    && ok "mcp search-server tools/list -> $mcp_names" \
+    || { bad "mcp search-server tools/list (got: ${mcp_names:-nothing})"; fails=$((fails+1)); }
+
+  echo
+  if [ "$fails" = "0" ]; then ok "all checks passed"; else bad "$fails check(s) failed"; return 1; fi
+}
+
+cmd_help() {
+  cat <<EOF
+agent - local llama.cpp + OpenCode coding agent
+
+  agent up               start llama-server, verify shared services, print status
+  agent down             stop llama-server only (leaves searxng/crawl4ai running)
+  agent status           show endpoints, model, VRAM, RAM, search mode
+  agent code [path]      launch OpenCode against the local endpoint
+  agent logs [-f|N]      tail the llama-server log
+  agent bench [--save]   measure decode tok/s; --save records the clean baseline
+  agent test             run the health/tool battery
+  agent help             this text
+
+Config: $BOOTSTRAP_ROOT/agent.env
+EOF
+}
+
+case "${1:-help}" in
+  up)     shift; cmd_up "$@" ;;
+  down)   shift; cmd_down "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  code)   shift; cmd_code "$@" ;;
+  logs)   shift; cmd_logs "$@" ;;
+  bench)  shift; cmd_bench "$@" ;;
+  test)   shift; cmd_test "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *) bad "unknown subcommand: $1"; echo; cmd_help; exit 1 ;;
+esac

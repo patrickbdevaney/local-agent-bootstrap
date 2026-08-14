@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Large artifacts - never commit these to the remote
+models/
+llama.cpp/
+
+# Runtime state
+run/
+logs/
+
+# Test scratch
+scratch-test/
+__pycache__/
+*.pyc

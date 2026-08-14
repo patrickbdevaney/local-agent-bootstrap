@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local llama.cpp (RTX 4060)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8090/v1",
+        "apiKey": "local-no-auth",
+        "timeout": 900000,
+        "headerTimeout": 120000
+      },
+      "models": {
+        "qwen3.5-4b": {
+          "name": "Qwen3.5-4B UD-Q5_K_XL (MTP)",
+          "family": "qwen3.5",
+          "tool_call": true,
+          "reasoning": false,
+          "temperature": true,
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          },
+          "modalities": {
+            "input": ["text"],
+            "output": ["text"]
+          },
+          "cost": {
+            "input": 0,
+            "output": 0
+          }
+        }
+      }
+    }
+  },
+  "model": "local/qwen3.5-4b",
+  "small_model": "local/qwen3.5-4b",
+  "mcp": {
+    "local-search": {
+      "type": "local",
+      "command": [
+        "node",
+        "/home/patrickd/local-agent-bootstrap/mcp/search-server.mjs"
+      ],
+      "enabled": true,
+      "timeout": 180000
+    }
+  }
+}
