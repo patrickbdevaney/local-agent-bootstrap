@@ -1,0 +1,25 @@
+[0m
+> build · qwen3.5-4b
+[0m
+[0m→ [0mRead events.json
+[0m
+[0m← [0mWrite stats.py
+Wrote file successfully.
+[0m
+[0m← [0mWrite test_stats.py
+Wrote file successfully.
+[0m
+[0m$ [0mpython3 -m pytest -q
+.                                                                        [100%]
+1 passed in 0.30s
+[0m
+[0m$ [0mpython3 stats.py
+total: 6
+level error: 2
+level info: 3
+level warn: 1
+avg api: 200.0
+avg cache: 10.0
+avg db: 100.0
+[0m
+Done. Tests pass and the script outputs the expected format.

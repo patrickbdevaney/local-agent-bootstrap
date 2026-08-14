@@ -1,0 +1,6 @@
+  PASS  KV_NOTES.md exists
+  PASS  has cache-type-k section
+  PASS  has flash attention section
+  PASS  has a Sources section
+  PASS  cites at least one URL
+  PASS  is substantive (>400 chars)

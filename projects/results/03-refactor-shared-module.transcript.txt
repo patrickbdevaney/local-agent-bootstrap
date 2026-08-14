@@ -1,0 +1,45 @@
+[0m
+> build · qwen3.5-4b
+[0m
+[0m→ [0mRead report_a.py
+[0m→ [0mRead report_b.py
+[0m→ [0mRead test_reports.py
+[0m
+[0m← [0mWrite formatting.py
+Wrote file successfully.
+[0m
+[0m← [0mEdit report_a.py
+Index: /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_a.py
+===================================================================
+--- /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_a.py
++++ /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_a.py
+@@ -1,6 +1,5 @@
+-def format_currency(amount):
+-    return "$%.2f" % amount
++from formatting import format_currency
+ 
+ 
+ def sales_report(rows):
+     return "\n".join("%s: %s" % (n, format_currency(v)) for n, v in rows)
+
+[0m
+[0m← [0mEdit report_b.py
+Index: /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_b.py
+===================================================================
+--- /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_b.py
++++ /home/patrickd/local-agent-bootstrap/projects/work/03-refactor-shared-module/report_b.py
+@@ -1,6 +1,5 @@
+-def format_currency(amount):
+-    return "$%.2f" % amount
++from formatting import format_currency
+ 
+ 
+ def refund_report(rows):
+     return "\n".join("REFUND %s: %s" % (n, format_currency(v)) for n, v in rows)
+
+[0m
+[0m$ [0mpython3 -m pytest -q
+..                                                                       [100%]
+2 passed in 0.26s
+[0m
+Done. Created `formatting.py` with the shared function and updated both report files to import from it. Tests pass.

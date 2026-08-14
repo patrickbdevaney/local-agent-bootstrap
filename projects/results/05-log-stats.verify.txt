@@ -1,0 +1,11 @@
+  PASS  stats.py exists
+  PASS  test_stats.py exists
+  PASS  pytest passes
+  PASS  stats.py runs
+  PASS  total is 6
+  PASS  info count is 3
+  PASS  error count is 2
+  PASS  warn count is 1
+  PASS  api avg is 200.0
+  PASS  db avg is 100.0
+  PASS  cache avg is 10.0

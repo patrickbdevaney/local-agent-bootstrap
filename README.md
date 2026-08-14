@@ -20,6 +20,7 @@ This repository is **not a plan**. Every command, flag, config file, and number 
 | **Prefill** | 1,795 tok/s on a 31,492-token prompt |
 | **Tool-call battery** | **10/10**, zero malformed, zero looping, 26–45 tokens/call |
 | **End-to-end coding task** | 3 correct edits, `pytest` green, exit 0 |
+| **Agentic project suite** | **5/5 projects, 38/38 checks**, 275 s total |
 | **Cold start** | `agent up` → live in ~8 s |
 | **Shutdown** | `agent down` → VRAM back to 11 MiB idle, no leak |
 
@@ -162,7 +163,8 @@ The eleven findings below cost real time to discover. They are the reason this r
 | Document | What's in it |
 |---|---|
 | [`INSTALL_LOG.md`](INSTALL_LOG.md) | The raw chronological install log — every command, output, and deviation, as it happened |
-| [`docs/AGENT_RUNS.md`](docs/AGENT_RUNS.md) | The agentic engineering projects run against this stack, with results |
+| [`docs/AGENT_RUNS.md`](docs/AGENT_RUNS.md) | Five agentic engineering projects run against this stack, with results and analysis |
+| [`projects/`](projects/) | Those projects — seeds, prompts, verification scripts, and the run harness |
 | [`wiki/`](wiki/) | Structured reference, one page per subsystem — start at [`wiki/Home.md`](wiki/Home.md) |
 | [`wiki/11-Porting-to-27B.md`](wiki/11-Porting-to-27B.md) | **The sizing method and worked numbers for the 27B Windows/WSL2 target** |
 

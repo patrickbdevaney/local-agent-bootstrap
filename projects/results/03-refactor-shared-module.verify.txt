@@ -1,0 +1,8 @@
+  PASS  formatting.py exists
+  PASS  format_currency lives in formatting
+  PASS  report_a no longer defines it
+  PASS  report_b no longer defines it
+  PASS  report_a imports from formatting
+  PASS  report_b imports from formatting
+  PASS  tests were NOT modified
+  PASS  pytest passes

@@ -1,0 +1,6 @@
+project=01-cli-wordcount
+elapsed_seconds=27
+agent_exit=0
+verify_exit=0
+checks_passed=9
+checks_failed=0

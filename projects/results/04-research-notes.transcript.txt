@@ -1,0 +1,2117 @@
+[0m
+> build · qwen3.5-4b
+[0m
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp --cache-type-k flag meaning explanation","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp flash attention -fa flag explanation","summarize":true}
+Let me try more specific searches:
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp cache type k KV cache type","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp flash attention implementation","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"--cache-type-k llama.cpp","count":10,"mode":"normal","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp flash attention -fa","count":10,"mode":"normal","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp flags documentation","count":10,"mode":"normal","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp command line options help","count":10,"mode":"normal","summarize":true}
+[0m
+[0m$ [0mcd /home/patrickd/local-agent-bootstrap/projects/work/04-research-notes && llama.cpp --help 2>&1 | head -100
+/bin/bash: line 1: llama.cpp: command not found
+[0m
+[0m$ [0mfind /home/patrickd/local-agent-bootstrap/projects/work/04-research-notes -name "llama.cpp" -o -name "llama-cli" 2>/dev/null | head -5
+(no output)
+[0m
+[0m$ [0mfind /home/patrickd/local-agent-bootstrap/projects/work/04-research-notes -name "*.cpp" | head -5
+(no output)
+[0m
+[0m$ [0mls -la /home/patrickd/local-agent-bootstrap/projects/work/04-research-notes/
+total 12
+drwxrwxr-x 3 patrickd patrickd 4096 Aug 14 19:11 .
+drwxrwxr-x 6 patrickd patrickd 4096 Aug 14 19:11 ..
+drwxrwxr-x 7 patrickd patrickd 4096 Aug 14 19:11 .git
+[0m
+Let me search the web more broadly for llama.cpp documentation:
+[0m⚙ [0mlocal-search_web_search {"query":"site:github.com/ggerganov/llama.cpp cache type k","count":5,"mode":"normal","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"\"cache-type-k\" \"llama.cpp\"","count":5,"mode":"normal","summarize":true}
+[0m⚙ [0mlocal-search_web_search {"query":"llama.cpp kv cache type","count":5,"mode":"normal","summarize":true}
+[0m% [0mWebFetch https://github.com/ggerganov/llama.cpp
+[0m✗ [0mWebFetch https://github.com/ggml-org/llama.cpp/blob/master/docs/cli.md failed
+[91m[1mError: [0mStatusCode: non 2xx status code (404 GET https://github.com/ggml-org/llama.cpp/blob/master/docs/cli.md)
+[0m
+[0m$ [0mfind /home/patrickd/local-agent-bootstrap/projects/work/04-research-notes -type f -name "*.md" 2>/dev/null | head -10
+(no output)
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/docs/cli.md" | head -200
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/docs/build.md" | head -300
+# Build llama.cpp locally
+
+The main product of this project is the `llama` library. Its C-style interface can be found in [include/llama.h](../include/llama.h).
+
+The project also includes many example programs and tools using the `llama` library. The examples range from simple, minimal code snippets to sophisticated sub-projects such as an OpenAI-compatible HTTP server.
+
+**To get the Code:**
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp
+cd llama.cpp
+```
+
+The following sections describe how to build with different backends and options.
+
+* [CPU Build](#cpu-build)
+* [BLAS Build](#blas-build)
+* [Metal Build](#metal-build)
+* [SYCL](#sycl)
+* [CUDA](#cuda)
+* [MUSA](#musa)
+* [HIP](#hip)
+* [Vulkan](#vulkan)
+* [CANN](#cann)
+* [ZenDNN](#zendnn)
+* [Arm® KleidiAI™](#arm-kleidiai)
+* [OpenCL](#opencl)
+* [Android](#android-1)
+* [OpenVINO](#openvino)
+* [Notes about GPU-accelerated backends](#notes-about-gpu-accelerated-backends)
+
+## CPU Build
+
+Build llama.cpp using `CMake`:
+
+```bash
+cmake -B build
+cmake --build build --config Release
+```
+
+**Notes**:
+
+- For faster compilation, add the `-j` argument to run multiple jobs in parallel, or use a generator that does this automatically such as Ninja. For example, `cmake --build build --config Release -j 8` will run 8 jobs in parallel.
+- For faster repeated compilation, install [ccache](https://ccache.dev/)
+- For debug builds, there are two cases:
+
+    1. Single-config generators (e.g. default = `Unix Makefiles`; note that they just ignore the `--config` flag):
+
+       ```bash
+       cmake -B build -DCMAKE_BUILD_TYPE=Debug
+       cmake --build build
+       ```
+
+    2. Multi-config generators (`-G` param set to Visual Studio, XCode...):
+
+       ```bash
+       cmake -B build -G "Xcode"
+       cmake --build build --config Debug
+       ```
+
+    For more details and a list of supported generators, see the [CMake documentation](https://cmake.org/cmake/help/latest/manual/cmake-generators.7.html).
+- For static builds, add `-DBUILD_SHARED_LIBS=OFF`:
+  ```
+  cmake -B build -DBUILD_SHARED_LIBS=OFF
+  cmake --build build --config Release
+  ```
+
+- Building for Windows (x86, x64 and arm64) with MSVC or clang as compilers:
+    - Install Visual Studio 2022, e.g. via the [Community Edition](https://visualstudio.microsoft.com/vs/community/). In the installer, select at least the following options (this also automatically installs the required additional tools like CMake,...):
+    - Tab Workload: Desktop-development with C++
+    - Tab Components (select quickly via search): C++-_CMake_ Tools for Windows, _Git_ for Windows, C++-_Clang_ Compiler for Windows, MS-Build Support for LLVM-Toolset (clang)
+    - Please remember to always use a Developer Command Prompt / PowerShell for VS2022 for git, build, test
+    - For Windows on ARM (arm64, WoA) build with:
+    ```bash
+    cmake --preset arm64-windows-llvm-release -D GGML_OPENMP=OFF
+    cmake --build build-arm64-windows-llvm-release
+    ```
+    For building with ninja generator and clang compiler as default:
+      -set path:set LIB=C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64;C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\lib\x64\uwp;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64
+      ```bash
+      cmake --preset x64-windows-llvm-release
+      cmake --build build-x64-windows-llvm-release
+      ```
+- If you want HTTPS/TLS features, you may install OpenSSL development libraries. If not installed, the project will build and run without SSL support.
+  - **Debian / Ubuntu:** `sudo apt-get install libssl-dev`
+  - **Fedora / RHEL / Rocky / Alma:** `sudo dnf install openssl-devel`
+  - **Arch / Manjaro:** `sudo pacman -S openssl`
+
+## BLAS Build
+
+Building the program with BLAS support may lead to some performance improvements in prompt processing using batch sizes higher than 32 (the default is 512). Using BLAS doesn't affect the generation performance. There are currently several different BLAS implementations available for build and use:
+
+### Accelerate Framework
+
+This is only available on Mac PCs and it's enabled by default. You can just build using the normal instructions.
+
+### OpenBLAS
+
+This provides BLAS acceleration using only the CPU. Make sure to have OpenBLAS installed on your machine.
+
+- Using `CMake` on Linux:
+
+    ```bash
+    cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
+    cmake --build build --config Release
+    ```
+
+### BLIS
+
+Check [BLIS.md](./backend/BLIS.md) for more information.
+
+### Intel oneMKL
+
+Building through oneAPI compilers will make avx_vnni instruction set available for intel processors that do not support avx512 and avx512_vnni. Please note that this build config **does not support Intel GPU**. For Intel GPU support, please refer to [llama.cpp for SYCL](./backend/SYCL.md).
+
+- Using manual oneAPI installation:
+  By default, `GGML_BLAS_VENDOR` is set to `Generic`, so if you already sourced intel environment script and assign `-DGGML_BLAS=ON` in cmake, the mkl version of Blas will automatically been selected. Otherwise please install oneAPI and follow the below steps:
+    ```bash
+    source /opt/intel/oneapi/setvars.sh # You can skip this step if  in oneapi-basekit docker image, only required for manual installation
+    cmake -B build -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Intel10_64lp -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -DGGML_NATIVE=ON
+    cmake --build build --config Release
+    ```
+
+- Using oneAPI docker image:
+  If you do not want to source the environment vars and install oneAPI manually, you can also build the code using intel docker container: [oneAPI-basekit](https://hub.docker.com/r/intel/oneapi-basekit). Then, you can use the commands given above.
+
+Check [Optimizing and Running LLaMA2 on Intel® CPU](https://builders.intel.com/solutionslibrary/optimizing-and-running-llama2-on-intel-cpu) for more information.
+
+### Other BLAS libraries
+
+Any other BLAS library can be used by setting the `GGML_BLAS_VENDOR` option. See the [CMake documentation](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors) for a list of supported vendors.
+
+## Metal Build
+
+On MacOS, Metal is enabled by default. Using Metal makes the computation run on the GPU.
+To disable the Metal build at compile time use the `-DGGML_METAL=OFF` cmake option.
+
+When built with Metal support, you can explicitly disable GPU inference with the `--n-gpu-layers 0` command-line argument.
+
+## SYCL
+
+SYCL is a higher-level programming model to improve programming productivity on various hardware accelerators.
+
+llama.cpp based on SYCL is used to **support Intel GPU** (Data Center Max series, Flex series, Arc series, Built-in GPU and iGPU).
+
+For detailed info, please refer to [llama.cpp for SYCL](./backend/SYCL.md).
+
+## CUDA
+
+This provides GPU acceleration using an NVIDIA GPU. Make sure to have the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit) installed.
+
+#### Download directly from NVIDIA
+You may find the official downloads here: [NVIDIA developer site](https://developer.nvidia.com/cuda-downloads).
+
+
+#### Compile and run inside a Fedora Toolbox Container
+We also have a [guide](./backend/CUDA-FEDORA.md) for setting up CUDA toolkit in a Fedora [toolbox container](https://containertoolbx.org/).
+
+**Recommended for:**
+- ***Necessary*** for users of [Atomic Desktops for Fedora](https://fedoraproject.org/atomic-desktops/); such as: [Silverblue](https://fedoraproject.org/atomic-desktops/silverblue/) and [Kinoite](https://fedoraproject.org/atomic-desktops/kinoite/).
+  - (there are no supported CUDA packages for these systems)
+- ***Necessary*** for users that have a host that is not a: [Supported Nvidia CUDA Release Platform](https://developer.nvidia.com/cuda-downloads).
+  - (for example, you may have [Fedora 42 Beta](https://fedoramagazine.org/announcing-fedora-linux-42-beta/) as your host operating system)
+- ***Convenient*** For those running [Fedora Workstation](https://fedoraproject.org/workstation/) or [Fedora KDE Plasma Desktop](https://fedoraproject.org/spins/kde), and want to keep their host system clean.
+- *Optionally* toolbox packages are available: [Arch Linux](https://archlinux.org/), [Red Hat Enterprise Linux >= 8.5](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux), or [Ubuntu](https://ubuntu.com/download)
+
+
+### Compilation
+
+Make sure to read the notes about the CPU build for general instructions for e.g. speeding up the compilation.
+
+```bash
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release
+```
+
+### Non-Native Builds
+
+By default llama.cpp will be built for the hardware that is connected to the system at that time.
+For a build covering all CUDA GPUs, disable `GGML_NATIVE`:
+
+```bash
+cmake -B build -DGGML_CUDA=ON -DGGML_NATIVE=OFF
+```
+
+The resulting binary should run on all CUDA GPUs with optimal performance, though some just-in-time compilation may be required.
+
+### Override Compute Capability Specifications
+
+If `nvcc` cannot detect your gpu, you may get compile warnings such as:
+ ```text
+nvcc warning : Cannot find valid GPU for '-arch=native', default arch is used
+```
+
+One option is to do a non-native build as described above.
+However, this will result in a large binary that takes a long time to compile.
+Alternatively it is also possible to explicitly specify CUDA architectures.
+This may also make sense for a non-native build, for that one should look at the logic in `ggml/src/ggml-cuda/CMakeLists.txt` as a starting point.
+
+To override the default CUDA architectures:
+
+#### 1. Take note of the `Compute Capability` of your NVIDIA devices: ["CUDA: Your GPU Compute > Capability"](https://developer.nvidia.com/cuda-gpus).
+
+```text
+GeForce RTX 4090      8.9
+GeForce RTX 3080 Ti   8.6
+GeForce RTX 3070      8.6
+```
+
+#### 2. Manually list each varying `Compute Capability` in the `CMAKE_CUDA_ARCHITECTURES` list.
+
+```bash
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="86;89"
+```
+
+### Overriding the CUDA Version
+
+If you have multiple CUDA installations on your system and want to compile llama.cpp for a specific one, e.g. for CUDA 11.7 installed under `/opt/cuda-11.7`:
+
+```bash
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/opt/cuda-11.7/bin/nvcc -DCMAKE_INSTALL_RPATH="/opt/cuda-11.7/lib64;\$ORIGIN" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+```
+
+#### Fixing Compatibility Issues with Old CUDA and New glibc
+
+If you try to use an old CUDA version (e.g. v11.7) with a new glibc version you can get errors like this:
+
+```
+/usr/include/bits/mathcalls.h(83): error: exception specification is
+  incompatible with that of previous function "cospi"
+
+
+  /opt/cuda-11.7/bin/../targets/x86_64-linux/include/crt/math_functions.h(5545):
+  here
+```
+
+It seems the least bad solution is to patch the CUDA installation to declare the correct signatures.
+Replace the following lines in `/path/to/your/cuda/installation/targets/x86_64-linux/include/crt/math_functions.h`:
+
+```C++
+// original lines
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 cospi(double x);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  cospif(float x);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 sinpi(double x);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  sinpif(float x);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 rsqrt(double x);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  rsqrtf(float x);
+
+// edited lines
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 cospi(double x) noexcept (true);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  cospif(float x) noexcept (true);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 sinpi(double x) noexcept (true);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  sinpif(float x) noexcept (true);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double                 rsqrt(double x) noexcept (true);
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float                  rsqrtf(float x) noexcept (true);
+```
+
+### Runtime CUDA environmental variables
+
+You may set the [cuda environmental variables](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars) at runtime.
+
+```bash
+# Use `CUDA_VISIBLE_DEVICES` to hide the first compute device.
+CUDA_VISIBLE_DEVICES="-0" ./build/bin/llama-server --model /srv/models/llama.gguf
+```
+
+#### CUDA_SCALE_LAUNCH_QUEUES
+
+The environment variable [`CUDA_SCALE_LAUNCH_QUEUES`](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html#cuda-scale-launch-queues) controls the size of CUDA's command buffer, which determines how many GPU operations can be queued before the CPU must wait for the GPU to catch up. A larger buffer reduces CPU-side stalls and allows more work to be queued on a GPU.
+
+Consider setting `CUDA_SCALE_LAUNCH_QUEUES=4x`, which increases the CUDA command buffer to 4 times its default size. This optimization is particularly beneficial for **Multi-GPU setups with pipeline parallelism**, where it significantly improves prompt processing throughput by allowing more operations to be enqueued across GPUs.
+
+#### GGML_CUDA_CUBLAS_COMPUTE_TYPE
+
+Override default, speed-optimized compute types for cuBLAS matrix multiplications.
+Legal values: `auto`, `f16`, `fp16`, `bf16`, `f32`, `fp32`.
+
+### Unified Memory
+
+The environment variable `GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` can be used to enable unified memory in Linux. This allows swapping to system RAM instead of crashing when the GPU VRAM is exhausted. In Windows this setting is available in the NVIDIA control panel as `System Memory Fallback`.
+
+### Peer Access
+
+The environment variable `GGML_CUDA_P2P` can be set to enable peer-to-peer access between multiple GPUs, allowing them to transfer data directly rather than to go through system memory.
+Requires driver support (usually restricted to workstation/datacenter GPUs).
+May cause crashes or corrupted outputs for some motherboards and BIOS settings (e.g. IOMMU).
+
+### Performance Tuning
+
+The following compilation options are also available to tweak performance:
+
+| Option                        | Legal values           | Default | Description                                                                                                                                                                                                                                                                                                                                                                      |
+|-------------------------------|------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| GGML_CUDA_FORCE_MMQ           | Boolean                | false   | Force the use of custom matrix multiplication kernels for quantized models instead of FP16 cuBLAS even if there is no int8 tensor core implementation available (affects V100, CDNA and RDNA3+). MMQ kernels are enabled by default on GPUs with int8 tensor core support. With MMQ force enabled, speed for large batch sizes will be worse but VRAM consumption will be lower. |
+| GGML_CUDA_FORCE_CUBLAS        | Boolean                | false   | Force the use of FP16 cuBLAS instead of custom matrix multiplication kernels for quantized models. There may be issues with numerical overflows (except for V100, CDNA and RDNA4 which use FP32 compute type by default) and memory use will be higher. Prompt processing may become faster on recent datacenter GPUs (the custom kernels were tuned primarily for RTX 3000/4000).   |
+| GGML_CUDA_PEER_MAX_BATCH_SIZE | Positive integer       | 128     | Maximum batch size for which to enable peer access between multiple GPUs. Peer access requires either Linux or NVLink. When using NVLink enabling peer access for larger batch sizes is potentially beneficial.                                                                                                                                                                  |
+| GGML_CUDA_FA_ALL_QUANTS       | Boolean                | false   | Compile support for all KV cache quantization type (combinations) for the FlashAttention CUDA kernels. More fine-grained control over KV cache size but compilation takes much longer.                                                                                                                                                                                           |
+
+## MUSA
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/docs/cli.md" 2>&1 | head -100
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/docs?ref=master" 2>&1 | grep '"name"' | head -20
+"name": "android.md",
+    "name": "android",
+    "name": "autoparser.md",
+    "name": "backend",
+    "name": "build-riscv64-spacemit.md",
+    "name": "build-s390x.md",
+    "name": "build.md",
+    "name": "completions.md",
+    "name": "development",
+    "name": "docker.md",
+    "name": "function-calling.md",
+    "name": "install.md",
+    "name": "llguidance.md",
+    "name": "models.md",
+    "name": "multi-gpu.md",
+    "name": "multimodal.md",
+    "name": "multimodal",
+    "name": "ops.md",
+    "name": "ops",
+    "name": "preset.md",
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/docs/install.md" | head -200
+# Install pre-built version of llama.cpp
+
+| Install via | Windows | Mac  | Linux |
+|-------------|---------|------|-------|
+| conda-forge | ✅      | ✅   | ✅   |
+| Winget      | ✅      |      |      |
+| Homebrew    |         | ✅   | ✅   |
+| MacPorts    |         | ✅   |      |
+| Nix         |         | ✅   | ✅   |
+
+## conda-forge (Windows, Mac and Linux)
+
+conda-forge provides builds for:
+ - CUDA (Windows and Linux)
+ - Vulkan (Windows and Linux)
+ - Apple Metal (macOS)
+
+```sh
+conda install -c conda-forge llama.cpp
+```
+
+```sh
+mamba install -c conda-forge llama.cpp
+```
+
+```sh
+# Project-local installation
+pixi add llama.cpp
+
+# Global installation
+pixi global install llama.cpp
+```
+
+This distribution is managed on [`conda-forge/llama.cpp-feedstock`](https://github.com/conda-forge/llama.cpp-feedstock/).
+
+Shall you have any problems, please open an issue on [its issue tracker](https://github.com/conda-forge/llama.cpp-feedstock/issues).
+
+## Winget (Windows)
+
+```sh
+winget install llama.cpp
+```
+
+The package is automatically updated with new `llama.cpp` releases. More info: https://github.com/ggml-org/llama.cpp/issues/8188
+
+## Homebrew (Mac and Linux)
+
+```sh
+brew install llama.cpp
+```
+
+The formula is automatically updated with new `llama.cpp` releases. More info: https://github.com/ggml-org/llama.cpp/discussions/7668
+
+## MacPorts (Mac)
+
+```sh
+sudo port install llama.cpp
+```
+
+See also: https://ports.macports.org/port/llama.cpp/details/
+
+## Nix (Mac and Linux)
+
+```sh
+nix profile install nixpkgs#llama-cpp
+```
+
+For flake enabled installs.
+
+Or
+
+```sh
+nix-env --file '<nixpkgs>' --install --attr llama-cpp
+```
+
+For non-flake enabled installs.
+
+This expression is automatically updated within the [nixpkgs repo](https://github.com/NixOS/nixpkgs/blob/nixos-24.05/pkgs/by-name/ll/llama-cpp/package.nix#L164).
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/main.cpp" 2>&1 | head -300
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/main.cpp" 2>&1 | head -300
+int llama_cli(int argc, char ** argv);
+
+int main(int argc, char ** argv) {
+    return llama_cli(argc, argv);
+}
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/llama-cli.cpp" 2>&1 | head -500
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli?ref=master" 2>&1 | grep '"name"' | head -20
+"name": "CMakeLists.txt",
+    "name": "README.md",
+    "name": "cli-client.cpp",
+    "name": "cli-client.h",
+    "name": "cli-context.cpp",
+    "name": "cli-context.h",
+    "name": "cli-server.h",
+    "name": "cli-ui.h",
+    "name": "cli.cpp",
+    "name": "main.cpp",
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/main.cpp" 2>&1 | head -500
+int llama_cli(int argc, char ** argv);
+
+int main(int argc, char ** argv) {
+    return llama_cli(argc, argv);
+}
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli.cpp" 2>&1 | head -800
+#include "arg.h"
+#include "common.h"
+#include "log.h"
+
+#include "cli-context.h"
+
+#include <signal.h>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#   define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
+static void signal_handler(int) {
+    if (cli_context::interrupted().load()) {
+        // second Ctrl+C - exit immediately
+        // make sure to clear colors before exiting (not using LOG or console.cpp here to avoid deadlock)
+        fprintf(stdout, "\033[0m\n");
+        fflush(stdout);
+        std::exit(130);
+    }
+    cli_context::interrupted().store(true);
+}
+#endif
+
+// satisfies -Wmissing-declarations
+int llama_cli(int argc, char ** argv);
+
+int llama_cli(int argc, char ** argv) {
+    common_params params;
+
+    params.verbosity = LOG_LEVEL_ERROR; // by default, less verbose logs
+
+    common_init();
+
+    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_CLI)) {
+        return 1;
+    }
+
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+    struct sigaction sigint_action;
+    sigint_action.sa_handler = signal_handler;
+    sigemptyset (&sigint_action.sa_mask);
+    sigint_action.sa_flags = 0;
+    sigaction(SIGINT, &sigint_action, NULL);
+    sigaction(SIGTERM, &sigint_action, NULL);
+#elif defined (_WIN32)
+    auto console_ctrl_handler = +[](DWORD ctrl_type) -> BOOL {
+        return (ctrl_type == CTRL_C_EVENT) ? (signal_handler(SIGINT), true) : false;
+    };
+    SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
+#endif
+
+    cli_context ctx_cli(params);
+
+    if (!ctx_cli.init()) {
+        return 1;
+    }
+
+    return ctx_cli.run();
+}
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli-context.cpp" 2>&1 | head -1000
+#include "cli-context.h"
+#include "cli-ui.h"
+
+#include "arg.h"
+#include "base64.hpp"
+#include "log.h"
+#include "console.h"
+
+#define JSON_ASSERT GGML_ASSERT
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <set>
+
+using json = nlohmann::ordered_json;
+
+struct cli_context_impl {
+    json messages      = json::array();
+    json pending_media = json::array(); // staged multimodal content parts
+};
+
+cli_context::cli_context(const common_params & params) : params(params), impl(new cli_context_impl()) {}
+
+cli_context::~cli_context() {
+    shutdown();
+}
+
+std::atomic<bool> & cli_context::interrupted() {
+    static std::atomic<bool> flag = false;
+    return flag;
+}
+
+static bool should_stop() {
+    return cli_context::interrupted().load();
+}
+
+static constexpr size_t FILE_GLOB_MAX_RESULTS = 100;
+
+const char * LLAMA_ASCII_LOGO = R"(
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+)";
+
+// number of values an arg consumes on the command line
+static int arg_num_values(const common_arg & opt) {
+    if (opt.value_hint_2 != nullptr) {
+        return 2;
+    }
+    if (opt.value_hint != nullptr) {
+        return 1;
+    }
+    return 0;
+}
+
+static std::string format_error_message(const json & err) {
+    if (err.contains("error") && err.at("error").is_object()) {
+        const auto & e = err.at("error");
+        if (e.contains("message") && e.at("message").is_string()) {
+            return e.at("message").get<std::string>();
+        }
+    }
+    return err.dump();
+}
+
+// err is the raw response body of a failed request; it may or may not be JSON
+static std::string format_error_message(const std::string & err) {
+    json parsed = json::parse(err, nullptr, false);
+    if (!parsed.is_discarded()) {
+        return format_error_message(parsed);
+    }
+    return err;
+}
+
+static std::string media_type_from_ext(const std::string & fname) {
+    std::string ext = std::filesystem::path(fname).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (ext == ".wav" || ext == ".mp3") {
+        return "audio";
+    }
+    if (ext == ".mp4" || ext == ".avi" || ext == ".mkv" || ext == ".mov" || ext == ".webm") {
+        return "video";
+    }
+    return "image";
+}
+
+bool cli_context::init() {
+    ui::init(params);
+
+    std::optional<ui::spinner> spinner;
+
+    bool use_external_server = !params.server_base.empty();
+    if (use_external_server) {
+        std::string base = params.server_base;
+        while (!base.empty() && base.back() == '/') {
+            base.pop_back();
+        }
+        client.server_base = base;
+
+        spinner.emplace("Connecting to server at " + base);
+    } else {
+        if (params.model.path.empty() && params.model.url.empty() &&
+                params.model.hf_repo.empty() && params.model.docker_repo.empty()) {
+            ui::show_error(
+                "no model specified",
+                "use -m <file.gguf> or -hf <user/repo> to run a local model,\n"
+                "or --server-base <url> to connect to a running llama-server"
+            );
+            return false;
+        }
+
+        spinner.emplace("\n\nLoading model...");
+
+        server.emplace();
+        if (!server->start(params)) {
+            ui::show_error("server start failed");
+            return false;
+        }
+        if (!server->wait_ready(should_stop)) {
+            if (!should_stop()) {
+                ui::show_error("the server exited before becoming ready");
+            }
+            return false;
+        }
+        client.server_base = server->address();
+    }
+
+    // for --server-base this is the main availability check; for a spawned
+    // server it is a cheap sanity check on top of the ready signal
+    auto is_aborted = [this]() {
+        return should_stop() || (server && !server->alive());
+    };
+    bool healthy = false;
+    try {
+        healthy = client.wait_health(is_aborted);
+    } catch (const std::exception & e) {
+        client.last_error = e.what();
+    }
+    if (!healthy) {
+        if (!should_stop()) {
+            ui::show_error(client.last_error);
+        }
+        return false;
+    }
+
+    if (use_external_server) {
+        spinner.reset();
+        try {
+            if (!list_and_ask_models()) {
+                return false;
+            }
+        } catch (const json::parse_error & e) {
+            ui::show_error(e.what());
+            ui::show_message("This might be caused by an incorrect server-base endpoint URL");
+            return false;
+        } catch (const std::exception & e) {
+            ui::show_error(e.what());
+            return false;
+        }
+
+        // restore the spinner for the next step
+        spinner.emplace("Waiting for server...");
+    }
+
+    fetch_server_props();
+
+    if (!params.out_file.empty()) {
+        output_file.emplace(params.out_file);
+        if (!output_file->is_open()) {
+            ui::show_error(string_format("failed to open output file '%s'", params.out_file.c_str()));
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void cli_context::fetch_server_props() {
+    try {
+        json props = json::parse(client.get("/props"));
+        model_name = props.value("model_alias", "");
+        if (model_name.empty()) {
+            const std::string path = props.value("model_path", "");
+            if (!path.empty()) {
+                model_name = std::filesystem::path(path).filename().string();
+            }
+        }
+        model_ftype = props.value("model_ftype", "");
+        build_info = props.value("build_info", "");
+        if (props.contains("modalities") && props.at("modalities").is_object()) {
+            const auto & modalities = props.at("modalities");
+            has_vision = modalities.value("vision", false);
+            has_audio  = modalities.value("audio", false);
+            has_video  = modalities.value("video", false);
+        }
+    } catch (const std::exception & e) {
+        // /props can be disabled on remote servers; not fatal
+        LOG_DBG("failed to fetch /props: %s\n", e.what());
+    }
+}
+
+bool cli_context::list_and_ask_models() {
+    json resp = json::parse(client.get("/v1/models"));
+    if (!resp.contains("data") || !resp.at("data").is_array()) {
+        throw std::runtime_error("invalid response from /v1/models");
+    }
+    std::vector<std::string> models;
+    std::vector<std::string> models_display;
+    for (const auto & m : resp.at("data")) {
+        if (!m.contains("id") || !m.at("id").is_string()) {
+            continue;
+        }
+        std::string name = m.at("id").get<std::string>();
+        std::string display = name;
+        if (m.contains("aliases") && m.at("aliases").is_array()) {
+            std::vector<std::string> aliases;
+            for (const auto & a : m.at("aliases")) {
+                if (a.is_string()) {
+                    aliases.push_back(a.get<std::string>());
+                }
+            }
+            if (!aliases.empty()) {
+                display += " (" + string_join(aliases, ", ") + ")";
+            }
+        }
+        models.push_back(name);
+        models_display.push_back(display);
+    }
+
+    // only one model: use it without asking
+    if (models.size() == 1) {
+        model_name = models[0];
+        client.model = model_name;
+        return true;
+    }
+
+    std::string message = "\nAvailable models:";
+    for (size_t i = 0; i < models_display.size(); ++i) {
+        message += "\n  " + std::to_string(i + 1) + ". " + models_display[i];
+    }
+    message += "\n";
+    ui::show_message(message);
+    std::string selection;
+    while (selection.empty()) {
+        if (should_stop()) {
+            return false;
+        }
+        ui::user_turn user_turn;
+        selection = user_turn.read_input(false, "Select model by number: ");
+        if (selection.empty()) {
+            continue;
+        }
+        try {
+            size_t idx = std::stoul(selection);
+            if (idx > 0 && idx <= models.size()) {
+                model_name = models[idx - 1];
+                client.model = model_name;
+                ui::show_message("Selected model: " + model_name);
+                break;
+            }
+        } catch (...) {
+            // ignore
+        }
+        ui::show_error("Invalid selection. Please enter a valid number.");
+        selection.clear();
+        continue;
+    }
+    return true;
+}
+
+void cli_context::add_system_prompt() {
+    if (!params.system_prompt.empty()) {
+        impl->messages.push_back({
+            {"role",    "system"},
+            {"content", params.system_prompt}
+        });
+    }
+}
+
+void cli_context::push_user_message(const std::string & text) {
+    json content;
+    if (impl->pending_media.empty()) {
+        content = text;
+    } else {
+        // multimodal message: media parts first, then the text
+        content = impl->pending_media;
+        content.push_back({
+            {"type", "text"},
+            {"text", text}
+        });
+        impl->pending_media = json::array();
+    }
+    impl->messages.push_back({
+        {"role",    "user"},
+        {"content", content}
+    });
+}
+
+bool cli_context::stage_media_file(const std::string & fname, const std::string & type) {
+    std::ifstream file(fname, std::ios::binary);
+    if (!file) {
+        return false;
+    }
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::string encoded = base64::encode(data);
+
+    if (type == "audio") {
+        std::string ext = std::filesystem::path(fname).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+        impl->pending_media.push_back({
+            {"type", "input_audio"},
+            {"input_audio", {
+                {"data",   encoded},
+                {"format", ext == ".mp3" ? "mp3" : "wav"}
+            }}
+        });
+    } else if (type == "video") {
+        impl->pending_media.push_back({
+            {"type", "input_video"},
+            {"input_video", {
+                {"data", encoded}
+            }}
+        });
+    } else {
+        // the server detects the actual image type from the data
+        impl->pending_media.push_back({
+            {"type", "image_url"},
+            {"image_url", {
+                {"url", "data:image/unknown;base64," + encoded}
+            }}
+        });
+    }
+    return true;
+}
+
+void cli_context::write_output_file(const std::string & content) {
+    if (output_file) {
+        (*output_file) << content;
+        output_file->flush();
+    }
+}
+
+bool cli_context::generate_completion(generated_content & content_out, cli_timings & timings) {
+    json body = {
+        {"messages",          impl->messages},
+        {"stream",            true},
+        // in order to get timings even when we cancel mid-way
+        {"timings_per_token", true},
+    };
+    if (!client.model.empty()) {
+        body["model"] = client.model;
+    }
+
+    bool stream_error = false;
+
+    ui::assistant_turn a;
+
+    std::string err = client.post_sse("/v1/chat/completions", body.dump(), should_stop, [&](const std::string & payload) {
+        json chunk = json::parse(payload, nullptr, false);
+        if (chunk.is_discarded()) {
+            return;
+        }
+        if (chunk.contains("error")) {
+            stream_error = true;
+            ui::show_error(format_error_message(chunk));
+            return;
+        }
+        if (chunk.contains("timings")) {
+            const auto & t = chunk.at("timings");
+            timings.prompt_per_second    = t.value("prompt_per_second",    0.0);
+            timings.predicted_per_second = t.value("predicted_per_second", 0.0);
+        }
+        if (!chunk.contains("choices") || !chunk.at("choices").is_array() || chunk.at("choices").empty()) {
+            return;
+        }
+        const auto & choice = chunk.at("choices").at(0);
+        if (!choice.contains("delta")) {
+            return;
+        }
+        const auto & delta = choice.at("delta");
+        if (delta.contains("reasoning_content") && delta.at("reasoning_content").is_string()) {
+            const std::string text = delta.at("reasoning_content").get<std::string>();
+            if (!text.empty()) {
+                content_out.reasoning += text;
+                a.push(ui::ASSISTANT_DISPLAY_MODE_REASONING, text);
+            }
+        }
+        if (delta.contains("content") && delta.at("content").is_string()) {
+            const std::string text = delta.at("content").get<std::string>();
+            if (!text.empty()) {
+                content_out.content += text;
+                a.push(ui::ASSISTANT_DISPLAY_MODE_CONTENT, text);
+            }
+        }
+    });
+
+    cli_context::interrupted().store(false);
+
+    if (!err.empty()) {
+        ui::show_error(format_error_message(err));
+        return false;
+    }
+    return !stream_error;
+}
+
+int cli_context::run() {
+    add_system_prompt();
+
+    std::string modalities = "text";
+    if (has_vision) {
+        modalities += ", vision";
+    }
+    if (has_audio) {
+        modalities += ", audio";
+    }
+    if (has_video) {
+        modalities += ", video";
+    }
+
+    std::string banner;
+    banner += "\n";
+    banner += LLAMA_ASCII_LOGO;
+    banner += "\n";
+    banner += "build      : " + build_info + "\n";
+    banner += "model      : " + model_name + "\n";
+    if (!model_ftype.empty()) {
+        banner += "ftype      : " + model_ftype + "\n";
+    }
+    banner += "modalities : " + modalities + "\n";
+    if (!params.system_prompt.empty()) {
+        banner += "using custom system prompt\n";
+    }
+    banner += "\n";
+    banner += "available commands:\n";
+    banner += "  /exit or Ctrl+C     stop or exit\n";
+    banner += "  /regen              regenerate the last response\n";
+    banner += "  /clear              clear the chat history\n";
+    banner += "  /read <file>        add a text file\n";
+    banner += "  /glob <pattern>     add text files using globbing pattern\n";
+    if (has_vision) {
+        banner += "  /image <file>       add an image file\n";
+    }
+    if (has_audio) {
+        banner += "  /audio <file>       add an audio file\n";
+    }
+    if (has_video) {
+        banner += "  /video <file>       add a video file\n";
+    }
+    banner += "\n";
+
+    ui::show_message(banner);
+
+    // interactive loop
+    std::string cur_msg;
+
+    auto add_text_file = [&](const std::string & fname) -> bool {
+        std::ifstream file(fname, std::ios::binary);
+        if (!file) {
+            ui::show_error(string_format("file does not exist or cannot be opened: '%s'", fname.c_str()));
+            return false;
+        }
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        cur_msg += "--- File: ";
+        cur_msg += fname;
+        cur_msg += " ---\n";
+        cur_msg += content;
+        ui::show_message(string_format("Loaded text from '%s'", fname.c_str()));
+        return true;
+    };
+
+    while (true) {
+        std::string buffer;
+        {
+            ui::user_turn user_turn;
+
+            if (params.prompt.empty()) {
+                buffer = user_turn.read_input(params.multiline_input);
+            } else {
+                // process input prompt from args
+                for (auto & fname : params.image) {
+                    if (!stage_media_file(fname, media_type_from_ext(fname))) {
+                        ui::show_error(string_format("file does not exist or cannot be opened: '%s'", fname.c_str()));
+                        break;
+                    }
+                    ui::show_message(string_format("Loaded media from '%s'", fname.c_str()));
+                }
+                buffer = params.prompt;
+                user_turn.echo(buffer);
+                params.prompt.clear(); // only use it once
+            }
+        }
+
+        if (should_stop()) {
+            cli_context::interrupted().store(false);
+            break;
+        }
+
+        // remove trailing newline
+        if (!buffer.empty() && buffer.back() == '\n') {
+            buffer.pop_back();
+        }
+
+        // skip empty messages
+        if (buffer.empty()) {
+            continue;
+        }
+
+        bool add_user_msg = true;
+
+        // process commands
+        if (string_starts_with(buffer, "/exit")) {
+            break;
+        } else if (string_starts_with(buffer, "/regen")) {
+            if (impl->messages.size() >= 2) {
+                size_t last_idx = impl->messages.size() - 1;
+                impl->messages.erase(last_idx);
+                add_user_msg = false;
+            } else {
+                ui::show_error("No message to regenerate.");
+                continue;
+            }
+        } else if (string_starts_with(buffer, "/clear")) {
+            impl->messages.clear();
+            add_system_prompt();
+
+            impl->pending_media = json::array();
+            ui::show_message("Chat history cleared.");
+            continue;
+        } else if (
+                (string_starts_with(buffer, "/image ") && has_vision) ||
+                (string_starts_with(buffer, "/audio ") && has_audio) ||
+                (string_starts_with(buffer, "/video ") && has_video)) {
+            std::string type = buffer.substr(1, 5);
+            // just in case (bad copy-paste for example), we strip all trailing/leading spaces
+            std::string fname = string_strip(buffer.substr(7));
+            if (!stage_media_file(fname, type)) {
+                ui::show_error(string_format("file does not exist or cannot be opened: '%s'", fname.c_str()));
+                continue;
+            }
+            ui::show_message(string_format("Loaded media from '%s'", fname.c_str()));
+            write_output_file(string_format("User: Added media: %s\n", fname.c_str()));
+            continue;
+        } else if (string_starts_with(buffer, "/read ")) {
+            std::string fname = string_strip(buffer.substr(6));
+            add_text_file(fname);
+            write_output_file(string_format("User: Added text file: %s\n", fname.c_str()));
+            continue;
+        } else if (string_starts_with(buffer, "/glob ")) {
+            std::error_code ec;
+            size_t count = 0;
+            auto curdir = std::filesystem::current_path();
+            std::string pattern = string_strip(buffer.substr(6));
+            std::filesystem::path rel_path;
+
+            auto startglob = pattern.find_first_of("![*?");
+            if (startglob != std::string::npos && startglob != 0) {
+                auto endpath = pattern.substr(0, startglob).find_last_of('/');
+                if (endpath != std::string::npos) {
+                    std::string rel_pattern = pattern.substr(0, endpath);
+#if !defined(_WIN32)
+                    if (string_starts_with(rel_pattern, '~')) {
+                        const char * home = std::getenv("HOME");
+                        if (home && home[0]) {
+                            rel_pattern = home + rel_pattern.substr(1);
+                        }
+                    }
+#endif
+                    rel_path = rel_pattern;
+                    pattern.erase(0, endpath + 1);
+                    curdir /= rel_path;
+                }
+            }
+
+            for (const auto & entry : std::filesystem::recursive_directory_iterator(curdir,
+                    std::filesystem::directory_options::skip_permission_denied, ec)) {
+                if (!entry.is_regular_file()) {
+                    continue;
+                }
+
+                std::string rel = std::filesystem::relative(entry.path(), curdir, ec).string();
+                if (ec) {
+                    ec.clear();
+                    continue;
+                }
+                std::replace(rel.begin(), rel.end(), '\\', '/');
+
+                if (!glob_match(pattern, rel)) {
+                    continue;
+                }
+
+                const std::string full_path = (curdir / rel).string();
+                if (!add_text_file(full_path)) {
+                    continue;
+                }
+                write_output_file(string_format("User: Added text file: %s\n", full_path.c_str()));
+
+                if (++count >= FILE_GLOB_MAX_RESULTS) {
+                    ui::show_error(string_format("Maximum number of globbed files allowed (%zu) reached.", FILE_GLOB_MAX_RESULTS));
+                    break;
+                }
+            }
+            continue;
+        } else {
+            // not a command
+            cur_msg += buffer;
+        }
+
+        // generate response
+        if (add_user_msg) {
+            push_user_message(cur_msg);
+            write_output_file(string_format("User:\n%s\n\n", cur_msg.c_str()));
+            cur_msg.clear();
+        }
+
+        cli_timings timings;
+        generated_content content;
+        generate_completion(content, timings);
+
+        json assistant_msg = {
+            {"role",    "assistant"},
+            {"content", content.content}
+        };
+        if (!content.reasoning.empty()) {
+            assistant_msg["reasoning_content"] = content.reasoning;
+        }
+        impl->messages.push_back(std::move(assistant_msg));
+
+        if (output_file) {
+            std::string out_content = "Assistant:\n";
+            if (!content.reasoning.empty()) {
+                out_content += "[Start thinking]\n\n";
+                out_content += content.reasoning;
+                out_content += "[End thinking]\n\n";
+            }
+            out_content += content.content;
+            if (!out_content.empty() && out_content.back() != '\n') {
+                out_content += "\n";
+            }
+            out_content += "\n";
+            write_output_file(out_content);
+        }
+
+        if (params.show_timings) {
+            ui::show_info(string_format(
+                "\n[ Prompt: %.1f t/s | Generation: %.1f t/s ]",
+                timings.prompt_per_second,
+                timings.predicted_per_second
+            ));
+        }
+
+        if (params.single_turn) {
+            break;
+        }
+    }
+
+    ui::show_message("\n\nExiting...");
+
+    return 0;
+}
+
+void cli_context::shutdown() {
+    if (server) {
+        server->stop();
+        server.reset();
+    }
+    if (output_file) {
+        output_file->close();
+        output_file.reset();
+    }
+}
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/arg.h" 2>&1 | head -600
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli?ref=master" 2>&1 | grep '"name"' | grep -v '"name": "' | head -20
+(no output)
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli?ref=master" 2>&1 | head -100
+[
+  {
+    "name": "CMakeLists.txt",
+    "path": "tools/cli/CMakeLists.txt",
+    "sha": "8449cdbaffcd43e13ac875a049ad0083fdca5e05",
+    "size": 772,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/CMakeLists.txt?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/CMakeLists.txt",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/8449cdbaffcd43e13ac875a049ad0083fdca5e05",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/CMakeLists.txt",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/CMakeLists.txt?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/8449cdbaffcd43e13ac875a049ad0083fdca5e05",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/CMakeLists.txt"
+    }
+  },
+  {
+    "name": "README.md",
+    "path": "tools/cli/README.md",
+    "sha": "b3543ed4da8ade15fc418e931d90cdebaa853b6b",
+    "size": 30135,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/README.md?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/b3543ed4da8ade15fc418e931d90cdebaa853b6b",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/README.md",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/README.md?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/b3543ed4da8ade15fc418e931d90cdebaa853b6b",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md"
+    }
+  },
+  {
+    "name": "cli-client.cpp",
+    "path": "tools/cli/cli-client.cpp",
+    "sha": "1c563335ba053f893cc3b4b274474cb7b62f2449",
+    "size": 5002,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-client.cpp?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-client.cpp",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/1c563335ba053f893cc3b4b274474cb7b62f2449",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli-client.cpp",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-client.cpp?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/1c563335ba053f893cc3b4b274474cb7b62f2449",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-client.cpp"
+    }
+  },
+  {
+    "name": "cli-client.h",
+    "path": "tools/cli/cli-client.h",
+    "sha": "9493b4fe6f5238f136a14050c035f057a95b1cc5",
+    "size": 1426,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-client.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-client.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/9493b4fe6f5238f136a14050c035f057a95b1cc5",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli-client.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-client.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/9493b4fe6f5238f136a14050c035f057a95b1cc5",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-client.h"
+    }
+  },
+  {
+    "name": "cli-context.cpp",
+    "path": "tools/cli/cli-context.cpp",
+    "sha": "3d801b73d4c1f5b3a9e382b5c168ecf84bb186b4",
+    "size": 22562,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-context.cpp?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-context.cpp",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/3d801b73d4c1f5b3a9e382b5c168ecf84bb186b4",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli-context.cpp",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-context.cpp?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/3d801b73d4c1f5b3a9e382b5c168ecf84bb186b4",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-context.cpp"
+    }
+  },
+  {
+    "name": "cli-context.h",
+    "path": "tools/cli/cli-context.h",
+    "sha": "15ce4efee69c98fbc55d9ce9f0b01544ebf5e7f6",
+    "size": 2148,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-context.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-context.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/15ce4efee69c98fbc55d9ce9f0b01544ebf5e7f6",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/cli-context.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/tools/cli/cli-context.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/15ce4efee69c98fbc55d9ce9f0b01544ebf5e7f6",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/cli-context.h"
+    }
+  },
+  {
+    "name": "cli-server.h",
+    "path": "tools/cli/cli-server.h",
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/tools/cli/README.md" 2>&1 | head -1000
+# llama.cpp/tools/cli
+
+## Usage
+
+<!-- HELP_START -->
+
+<!-- IMPORTANT: The list below is auto-generated by llama-gen-docs; do NOT modify it manually -->
+
+### Common params
+
+| Argument | Explanation |
+| -------- | ----------- |
+| `-h, --help, --usage` | print usage and exit |
+| `--version` | show version and build info |
+| `-cl, --cache-list` | show list of models in cache |
+| `--completion-bash` | print source-able bash completion script for llama.cpp |
+| `-t, --threads N` | number of CPU threads to use during generation (default: -1)<br/>(env: LLAMA_ARG_THREADS) |
+| `-tb, --threads-batch N` | number of threads to use during batch and prompt processing (default: same as --threads) |
+| `-C, --cpu-mask M` | CPU affinity mask: arbitrarily long hex. Complements cpu-range (default: "") |
+| `-Cr, --cpu-range lo-hi` | range of CPUs for affinity. Complements --cpu-mask |
+| `--cpu-strict <0\|1>` | use strict CPU placement (default: 0) |
+| `--prio N` | set process/thread priority : low(-1), normal(0), medium(1), high(2), realtime(3) (default: 0) |
+| `--poll <0...100>` | use polling level to wait for work (0 - no polling, default: 50) |
+| `-Cb, --cpu-mask-batch M` | CPU affinity mask: arbitrarily long hex. Complements cpu-range-batch (default: same as --cpu-mask) |
+| `-Crb, --cpu-range-batch lo-hi` | ranges of CPUs for affinity. Complements --cpu-mask-batch |
+| `--cpu-strict-batch <0\|1>` | use strict CPU placement (default: same as --cpu-strict) |
+| `--prio-batch N` | set process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0) |
+| `--poll-batch <0\|1>` | use polling to wait for work (default: same as --poll) |
+| `-c, --ctx-size N` | size of the prompt context (default: 0, 0 = loaded from model)<br/>(env: LLAMA_ARG_CTX_SIZE) |
+| `-n, --predict, --n-predict N` | number of tokens to predict (default: -1, -1 = infinity)<br/>(env: LLAMA_ARG_N_PREDICT) |
+| `-b, --batch-size N` | logical maximum batch size (default: 2048)<br/>(env: LLAMA_ARG_BATCH) |
+| `-ub, --ubatch-size N` | physical maximum batch size (default: 512)<br/>(env: LLAMA_ARG_UBATCH) |
+| `--keep N` | number of tokens to keep from the initial prompt (default: 0, -1 = all) |
+| `--swa-full` | use full-size SWA cache (default: false)<br/>[(more info)](https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)<br/>(env: LLAMA_ARG_SWA_FULL) |
+| `-fa, --flash-attn [on\|off\|auto]` | set Flash Attention use ('on', 'off', or 'auto', default: 'auto')<br/>(env: LLAMA_ARG_FLASH_ATTN) |
+| `-p, --prompt PROMPT` | prompt to start generation with; for system message, use -sys |
+| `--perf, --no-perf` | whether to enable internal libllama performance timings (default: false)<br/>(env: LLAMA_ARG_PERF) |
+| `-f, --file FNAME` | a file containing the prompt (default: none) |
+| `-bf, --binary-file FNAME` | binary file containing the prompt (default: none) |
+| `-e, --escape, --no-escape` | whether to process escapes sequences (\n, \r, \t, \', \", \\) (default: true) |
+| `--rope-scaling {none,linear,yarn}` | RoPE frequency scaling method, defaults to linear unless specified by the model<br/>(env: LLAMA_ARG_ROPE_SCALING_TYPE) |
+| `--rope-scale N` | RoPE context scaling factor, expands context by a factor of N<br/>(env: LLAMA_ARG_ROPE_SCALE) |
+| `--rope-freq-base N` | RoPE base frequency, used by NTK-aware scaling (default: loaded from model)<br/>(env: LLAMA_ARG_ROPE_FREQ_BASE) |
+| `--rope-freq-scale N` | RoPE frequency scaling factor, expands context by a factor of 1/N<br/>(env: LLAMA_ARG_ROPE_FREQ_SCALE) |
+| `--yarn-orig-ctx N` | YaRN: original context size of model (default: 0 = model training context size)<br/>(env: LLAMA_ARG_YARN_ORIG_CTX) |
+| `--yarn-ext-factor N` | YaRN: extrapolation mix factor (default: -1.00, 0.0 = full interpolation)<br/>(env: LLAMA_ARG_YARN_EXT_FACTOR) |
+| `--yarn-attn-factor N` | YaRN: scale sqrt(t) or attention magnitude (default: -1.00)<br/>(env: LLAMA_ARG_YARN_ATTN_FACTOR) |
+| `--yarn-beta-slow N` | YaRN: high correction dim or alpha (default: -1.00)<br/>(env: LLAMA_ARG_YARN_BETA_SLOW) |
+| `--yarn-beta-fast N` | YaRN: low correction dim or beta (default: -1.00)<br/>(env: LLAMA_ARG_YARN_BETA_FAST) |
+| `-kvo, --kv-offload, -nkvo, --no-kv-offload` | whether to enable KV cache offloading (default: enabled)<br/>(env: LLAMA_ARG_KV_OFFLOAD) |
+| `--repack, -nr, --no-repack` | whether to enable weight repacking (default: enabled)<br/>(env: LLAMA_ARG_REPACK) |
+| `--no-host` | bypass host buffer allowing extra buffers to be used<br/>(env: LLAMA_ARG_NO_HOST) |
+| `-ctk, --cache-type-k TYPE` | KV cache data type for K<br/>allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1<br/>(default: f16)<br/>(env: LLAMA_ARG_CACHE_TYPE_K) |
+| `-ctv, --cache-type-v TYPE` | KV cache data type for V<br/>allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1<br/>(default: f16)<br/>(env: LLAMA_ARG_CACHE_TYPE_V) |
+| `-dt, --defrag-thold N` | KV cache defragmentation threshold (DEPRECATED)<br/>(env: LLAMA_ARG_DEFRAG_THOLD) |
+| `-np, --parallel N` | number of parallel sequences to decode (default: 1)<br/>(env: LLAMA_ARG_N_PARALLEL) |
+| `--rpc SERVERS` | comma-separated list of RPC servers (host:port)<br/>(env: LLAMA_ARG_RPC) |
+| `--mlock` | DEPRECATED in favor of `--load-mode`: force system to keep model in RAM rather than swapping or compressing<br/>(env: LLAMA_ARG_MLOCK) |
+| `--mmap, --no-mmap` | DEPRECATED in favor of `--load-mode`: whether to memory-map model. (if mmap disabled, slower load but may reduce pageouts if not using mlock)<br/>(env: LLAMA_ARG_MMAP) |
+| `-dio, --direct-io, -ndio, --no-direct-io` | DEPRECATED in favor of `--load-mode`: use DirectIO if available<br/>(env: LLAMA_ARG_DIO) |
+| `-lm, --load-mode MODE` | model loading mode (default: auto)<br/>- auto: mmap, unless a device does not support it<br/>- none: no special loading mode<br/>- mmap: memory-map model (if mmap disabled, slower load but may reduce pageouts if not using mlock)<br/>- mlock: force system to keep model in RAM rather than swapping or compressing<br/>- mmap+mlock: mmap + force system to keep model in RAM rather than swapping or compressing<br/>- dio: use DirectIO if available<br/><br/>(env: LLAMA_ARG_LOAD_MODE) |
+| `--numa TYPE` | attempt optimizations that help on some NUMA systems<br/>- distribute: spread execution evenly over all nodes<br/>- isolate: only spawn threads on CPUs on the node that execution started on<br/>- numactl: use the CPU map provided by numactl<br/>if run without this previously, it is recommended to drop the system page cache before using this<br/>see https://github.com/ggml-org/llama.cpp/issues/1437<br/>(env: LLAMA_ARG_NUMA) |
+| `-dev, --device <dev1,dev2,..>` | comma-separated list of devices to use for offloading (none = don't offload)<br/>use --list-devices to see a list of available devices<br/>(env: LLAMA_ARG_DEVICE) |
+| `--list-devices` | print list of available devices and exit |
+| `-ot, --override-tensor <tensor name pattern>=<buffer type>,...` | override tensor buffer type<br/>(env: LLAMA_ARG_OVERRIDE_TENSOR) |
+| `-cmoe, --cpu-moe` | keep all Mixture of Experts (MoE) weights in the CPU<br/>(env: LLAMA_ARG_CPU_MOE) |
+| `-ncmoe, --n-cpu-moe N` | keep the Mixture of Experts (MoE) weights of the first N layers in the CPU<br/>(env: LLAMA_ARG_N_CPU_MOE) |
+| `-ngl, --gpu-layers, --n-gpu-layers N` | max. number of layers to store in VRAM, either an exact number, 'auto', or 'all' (default: auto)<br/>(env: LLAMA_ARG_N_GPU_LAYERS) |
+| `-sm, --split-mode {none,layer,row,tensor}` | how to split the model across multiple GPUs, one of:<br/>- none: use one GPU only<br/>- layer (default): split layers and KV across GPUs (pipelined)<br/>- row: split weight across GPUs by rows (parallelized)<br/>- tensor: split weights and KV across GPUs (parallelized, EXPERIMENTAL)<br/>(env: LLAMA_ARG_SPLIT_MODE) |
+| `-ts, --tensor-split N0,N1,N2,...` | fraction of the model to offload to each GPU, comma-separated list of proportions, e.g. 3,1<br/>(env: LLAMA_ARG_TENSOR_SPLIT) |
+| `-mg, --main-gpu INDEX` | the GPU to use for the model (with split-mode = none), or for intermediate results and KV (with split-mode = row) (default: 0)<br/>(env: LLAMA_ARG_MAIN_GPU) |
+| `-fit, --fit [on\|off]` | whether to adjust unset arguments to fit in device memory ('on' or 'off', default: 'on')<br/>(env: LLAMA_ARG_FIT) |
+| `-fitt, --fit-target MiB0,MiB1,MiB2,...` | target margin per device for --fit, comma-separated list of values, single value is broadcast across all devices, default: 1024<br/>(env: LLAMA_ARG_FIT_TARGET) |
+| `-fitc, --fit-ctx N` | minimum ctx size that can be set by --fit option, default: 4096<br/>(env: LLAMA_ARG_FIT_CTX) |
+| `--check-tensors` | check model tensor data for invalid values (default: false) |
+| `--override-kv KEY=TYPE:VALUE,...` | advanced option to override model metadata by key. to specify multiple overrides, either use comma-separated values.<br/>types: int, float, bool, str. example: --override-kv tokenizer.ggml.add_bos_token=bool:false,tokenizer.ggml.add_eos_token=bool:false |
+| `--op-offload, --no-op-offload` | whether to offload host tensor operations to device (default: true) |
+| `--lora FNAME` | path to LoRA adapter (use comma-separated values to load multiple adapters) |
+| `--lora-scaled FNAME:SCALE,...` | path to LoRA adapter with user defined scaling (format: FNAME:SCALE,...)<br/>note: use comma-separated values |
+| `--control-vector FNAME` | add a control vector<br/>note: use comma-separated values to add multiple control vectors |
+| `--control-vector-scaled FNAME:SCALE,...` | add a control vector with user defined scaling SCALE<br/>note: use comma-separated values (format: FNAME:SCALE,...) |
+| `--control-vector-layer-range START END` | layer range to apply the control vector(s) to, start and end inclusive |
+| `-m, --model FNAME` | model path to load<br/>(env: LLAMA_ARG_MODEL) |
+| `-mu, --model-url MODEL_URL` | model download url (default: unused)<br/>(env: LLAMA_ARG_MODEL_URL) |
+| `-dr, --docker-repo [<repo>/]<model>[:quant]` | Docker Hub model repository. repo is optional, default to ai/. quant is optional, default to :latest.<br/>example: gemma3<br/>(default: unused)<br/>(env: LLAMA_ARG_DOCKER_REPO) |
+| `-hf, -hfr, --hf-repo <user>/<model>[:quant]` | Hugging Face model repository; quant is optional, case-insensitive, default to Q4_K_M, or falls back to the first file in the repo if Q4_K_M doesn't exist.<br/>mmproj is also downloaded automatically if available. to disable, add --no-mmproj<br/>example: ggml-org/GLM-4.7-Flash-GGUF:Q4_K_M<br/>(default: unused)<br/>(env: LLAMA_ARG_HF_REPO) |
+| `-hff, --hf-file FILE` | Hugging Face model file. If specified, it will override the quant in --hf-repo (default: unused)<br/>(env: LLAMA_ARG_HF_FILE) |
+| `-hft, --hf-token TOKEN` | Hugging Face access token (default: value from HF_TOKEN environment variable)<br/>(env: HF_TOKEN) |
+| `--log-disable` | Log disable |
+| `--log-file FNAME` | Log to file<br/>(env: LLAMA_ARG_LOG_FILE) |
+| `--log-colors [on\|off\|auto]` | Set colored logging ('on', 'off', or 'auto', default: 'auto')<br/>'auto' enables colors when output is to a terminal<br/>(env: LLAMA_ARG_LOG_COLORS) |
+| `-v, --verbose, --log-verbose` | Set verbosity level to infinity (i.e. log all messages, useful for debugging) |
+| `--offline` | Offline mode: forces use of cache, prevents network access<br/>(env: LLAMA_ARG_OFFLINE) |
+| `-lv, --verbosity, --log-verbosity N` | Set the verbosity threshold. Messages with a higher verbosity will be ignored. Values:<br/> - 0: generic output<br/> - 1: error<br/> - 2: warning<br/> - 3: info<br/> - 4: trace (more info)<br/> - 5: debug<br/>(default: 3)<br/><br/>(env: LLAMA_ARG_LOG_VERBOSITY) |
+| `--log-prefix, --no-log-prefix` | Enable prefix in log messages<br/>(env: LLAMA_ARG_LOG_PREFIX) |
+| `--log-timestamps, --no-log-timestamps` | Enable timestamps in log messages<br/>(env: LLAMA_ARG_LOG_TIMESTAMPS) |
+| `--spec-draft-type-k, -ctkd, --cache-type-k-draft TYPE` | KV cache data type for K for the draft model<br/>allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1<br/>(default: f16)<br/>(env: LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_K) |
+| `--spec-draft-type-v, -ctvd, --cache-type-v-draft TYPE` | KV cache data type for V for the draft model<br/>allowed values: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1<br/>(default: f16)<br/>(env: LLAMA_ARG_SPEC_DRAFT_CACHE_TYPE_V) |
+
+
+### Sampling params
+
+| Argument | Explanation |
+| -------- | ----------- |
+| `--samplers SAMPLERS` | samplers that will be used for generation in the order, separated by ';'<br/>(default: penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature) |
+| `-s, --seed SEED` | RNG seed (default: -1, use random seed for -1) |
+| `--sampler-seq, --sampling-seq SEQUENCE` | simplified sequence for samplers that will be used (default: edskypmxt) |
+| `--ignore-eos` | ignore end of stream token and continue generating (implies --logit-bias EOS-inf) |
+| `--temp, --temperature N` | temperature (default: 0.80) |
+| `--top-k N` | top-k sampling (default: 40, 0 = disabled)<br/>(env: LLAMA_ARG_TOP_K) |
+| `--top-p N` | top-p sampling (default: 0.95, 1.0 = disabled) |
+| `--min-p N` | min-p sampling (default: 0.05, 0.0 = disabled) |
+| `--top-nsigma, --top-n-sigma N` | top-n-sigma sampling (default: -1.00, -1.0 = disabled) |
+| `--xtc-probability N` | xtc probability (default: 0.00, 0.0 = disabled) |
+| `--xtc-threshold N` | xtc threshold (default: 0.10, 1.0 = disabled) |
+| `--typical, --typical-p N` | locally typical sampling, parameter p (default: 1.00, 1.0 = disabled) |
+| `--repeat-last-n N` | last n tokens to consider for penalize (default: 64, 0 = disabled) |
+| `--repeat-penalty N` | penalize repeat sequence of tokens (default: 1.00, 1.0 = disabled) |
+| `--presence-penalty N` | repeat alpha presence penalty (default: 0.00, 0.0 = disabled) |
+| `--frequency-penalty N` | repeat alpha frequency penalty (default: 0.00, 0.0 = disabled) |
+| `--dry-multiplier N` | set DRY sampling multiplier (default: 0.00, 0.0 = disabled) |
+| `--dry-base N` | set DRY sampling base value (default: 1.75) |
+| `--dry-allowed-length N` | set allowed length for DRY sampling (default: 2) |
+| `--dry-penalty-last-n N` | set DRY penalty for the last n tokens (default: 64, 0 = disable) |
+| `--dry-sequence-breaker STRING` | add sequence breaker for DRY sampling, clearing out default breakers ('\n', ':', '"', '*') in the process; use "none" to not use any sequence breakers |
+| `--adaptive-target N` | adaptive-p: select tokens near this probability (valid range 0.0 to 1.0; negative = disabled) (default: -1.00)<br/>[(more info)](https://github.com/ggml-org/llama.cpp/pull/17927) |
+| `--adaptive-decay N` | adaptive-p: decay rate for target adaptation over time. lower values are more reactive, higher values are more stable.<br/>(valid range 0.0 to 0.99) (default: 0.90) |
+| `--dynatemp-range N` | dynamic temperature range (default: 0.00, 0.0 = disabled) |
+| `--dynatemp-exp N` | dynamic temperature exponent (default: 1.00) |
+| `--mirostat N` | use Mirostat sampling.<br/>Top K, Nucleus and Locally Typical samplers are ignored if used.<br/>(default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0) |
+| `--mirostat-lr N` | Mirostat learning rate, parameter eta (default: 0.10) |
+| `--mirostat-ent N` | Mirostat target entropy, parameter tau (default: 5.00) |
+| `-l, --logit-bias TOKEN_ID(+/-)BIAS` | modifies the likelihood of token appearing in the completion,<br/>i.e. `--logit-bias 15043+1` to increase likelihood of token ' Hello',<br/>or `--logit-bias 15043-1` to decrease likelihood of token ' Hello' |
+| `--grammar GRAMMAR` | BNF-like grammar to constrain generations (see samples in grammars/ dir) |
+| `--grammar-file FNAME` | file to read grammar from |
+| `-j, --json-schema SCHEMA` | JSON schema to constrain generations (https://json-schema.org/), e.g. `{}` for any JSON object<br/>For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead |
+| `-jf, --json-schema-file FILE` | File containing a JSON schema to constrain generations (https://json-schema.org/), e.g. `{}` for any JSON object<br/>For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead |
+| `-bs, --backend-sampling` | enable backend sampling (experimental) (default: disabled)<br/>(env: LLAMA_ARG_BACKEND_SAMPLING) |
+
+
+### CLI-specific params
+
+| Argument | Explanation |
+| -------- | ----------- |
+| `--server-base URL` | connect to this server instead of starting a new one, example: 'http://localhost:8080' (default: none) |
+| `--verbose-prompt` | print a verbose prompt before generation (default: false) |
+| `--display-prompt, --no-display-prompt` | whether to print prompt at generation (default: true) |
+| `-co, --color [on\|off\|auto]` | Colorize output to distinguish prompt and user input from generations ('on', 'off', or 'auto', default: 'auto')<br/>'auto' enables colors when output is to a terminal |
+| `-ctxcp, --ctx-checkpoints, --swa-checkpoints N` | max number of context checkpoints to create per slot (default: 32)[(more info)](https://github.com/ggml-org/llama.cpp/pull/15293)<br/>(env: LLAMA_ARG_CTX_CHECKPOINTS) |
+| `-cram, --cache-ram N` | set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 - disable)[(more info)](https://github.com/ggml-org/llama.cpp/pull/16391)<br/>(env: LLAMA_ARG_CACHE_RAM) |
+| `--context-shift, --no-context-shift` | whether to use context shift on infinite text generation (default: disabled)<br/>(env: LLAMA_ARG_CONTEXT_SHIFT) |
+| `-sys, --system-prompt PROMPT` | system prompt to use with model (if applicable, depending on chat template) |
+| `--show-timings, --no-show-timings` | whether to show timing information after each response (default: true)<br/>(env: LLAMA_ARG_SHOW_TIMINGS) |
+| `-sysf, --system-prompt-file FNAME` | a file containing the system prompt (default: none) |
+| `-r, --reverse-prompt PROMPT` | halt generation at PROMPT, return control in interactive mode |
+| `-sp, --special` | special tokens output enabled (default: false) |
+| `-cnv, --conversation, -no-cnv, --no-conversation` | whether to run in conversation mode:<br/>- does not print special tokens and suffix/prefix<br/>- interactive mode is also enabled<br/>(default: auto enabled if chat template is available) |
+| `-st, --single-turn` | run conversation for a single turn only, then exit when done<br/>will not be interactive if first turn is predefined with --prompt<br/>(default: false) |
+| `-mli, --multiline-input` | allows you to write or paste multiple lines without ending each in '\' |
+| `--warmup, --no-warmup` | whether to perform warmup with an empty run (default: enabled) |
+| `-mm, --mmproj FILE` | path to a multimodal projector file. see tools/mtmd/README.md<br/>note: if -hf is used, this argument can be omitted<br/>(env: LLAMA_ARG_MMPROJ) |
+| `-mmu, --mmproj-url URL` | URL to a multimodal projector file. see tools/mtmd/README.md<br/>(env: LLAMA_ARG_MMPROJ_URL) |
+| `--mmproj-auto, --no-mmproj, --no-mmproj-auto` | whether to use multimodal projector file (if available), useful when using -hf (default: enabled)<br/>(env: LLAMA_ARG_MMPROJ_AUTO) |
+| `--mmproj-offload, --no-mmproj-offload` | whether to enable GPU offloading for multimodal projector (default: enabled)<br/>(env: LLAMA_ARG_MMPROJ_OFFLOAD) |
+| `--image, --audio, --video FILE` | path to an image, audio, or video file. use with multimodal models, use comma-separated values for multiple files |
+| `--image-min-tokens N` | minimum number of tokens each image can take, only used by vision models with dynamic resolution (default: read from model)<br/>(env: LLAMA_ARG_IMAGE_MIN_TOKENS) |
+| `--image-max-tokens N` | maximum number of tokens each image can take, only used by vision models with dynamic resolution (default: read from model)<br/>(env: LLAMA_ARG_IMAGE_MAX_TOKENS) |
+| `-o, --output, --output-file FNAME` | output file (default: '') |
+| `--chat-template-kwargs STRING` | sets additional params for the json template parser, must be a valid json object string, e.g. '{"key1":"value1","key2":"value2"}'<br/>(env: LLAMA_ARG_CHAT_TEMPLATE_KWARGS) |
+| `--jinja, --no-jinja` | whether to use jinja template engine for chat (default: enabled)<br/>(env: LLAMA_ARG_JINJA) |
+| `--reasoning-format FORMAT` | controls whether thought tags are allowed and/or extracted from the response, and in which format they're returned; one of:<br/>- none: leaves thoughts unparsed in `message.content`<br/>- deepseek: puts thoughts in `message.reasoning_content`<br/>- deepseek-legacy: keeps `<think>` tags in `message.content` while also populating `message.reasoning_content`<br/>(default: auto)<br/>(env: LLAMA_ARG_THINK) |
+| `-rea, --reasoning [on\|off\|auto]` | Use reasoning/thinking in the chat ('on', 'off', or 'auto', default: 'auto' (detect from template))<br/>(env: LLAMA_ARG_REASONING) |
+| `--reasoning-effort LEVEL` | reasoning effort level given to the chat template: 'default' to keep the template default,<br/>or a level such as 'minimal', 'low', 'medium', 'high', 'xhigh' or 'max' (default: default)<br/>(env: LLAMA_ARG_REASONING_EFFORT) |
+| `--reasoning-budget N` | token budget for thinking: -1 for unrestricted, 0 for immediate end, N>0 for token budget (default: -1)<br/>(env: LLAMA_ARG_THINK_BUDGET) |
+| `--reasoning-budget-message MESSAGE` | message injected before the end-of-thinking tag when reasoning budget is exhausted (default: none)<br/>(env: LLAMA_ARG_THINK_BUDGET_MESSAGE) |
+| `--reasoning-preserve, --no-reasoning-preserve` | preserve reasoning trace in the full history, not just the last assistant message (default: template default)<br/>compatible with certain templates having 'supports_preserve_reasoning' capability<br/>example: https://docs.z.ai/guides/capabilities/thinking-mode#preserved-thinking<br/>(env: LLAMA_ARG_REASONING_PRESERVE) |
+| `--chat-template JINJA_TEMPLATE` | set custom jinja chat template (default: template taken from model's metadata)<br/>if suffix/prefix are specified, template will be disabled<br/>only commonly used templates are accepted (unless --jinja is set before this flag):<br/>list of built-in templates:<br/>bailing, bailing-think, bailing2, chatglm3, chatglm4, chatml, command-r, deepseek, deepseek-ocr, deepseek2, deepseek3, exaone-moe, exaone3, exaone4, falcon3, gemma, gigachat, glmedge, gpt-oss, granite, granite-4.0, granite-4.1, grok-2, hunyuan-dense, hunyuan-moe, hunyuan-vl, kimi-k2, llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4, megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken, mistral-v7, mistral-v7-tekken, monarch, openchat, orion, pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open, vicuna, vicuna-orca, yandex, zephyr<br/>(env: LLAMA_ARG_CHAT_TEMPLATE) |
+| `--chat-template-file JINJA_TEMPLATE_FILE` | set custom jinja chat template file (default: template taken from model's metadata)<br/>if suffix/prefix are specified, template will be disabled<br/>only commonly used templates are accepted (unless --jinja is set before this flag):<br/>list of built-in templates:<br/>bailing, bailing-think, bailing2, chatglm3, chatglm4, chatml, command-r, deepseek, deepseek-ocr, deepseek2, deepseek3, exaone-moe, exaone3, exaone4, falcon3, gemma, gigachat, glmedge, gpt-oss, granite, granite-4.0, granite-4.1, grok-2, hunyuan-dense, hunyuan-moe, hunyuan-vl, kimi-k2, llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4, megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken, mistral-v7, mistral-v7-tekken, monarch, openchat, orion, pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open, vicuna, vicuna-orca, yandex, zephyr<br/>(env: LLAMA_ARG_CHAT_TEMPLATE_FILE) |
+| `--skip-chat-parsing, --no-skip-chat-parsing` | force a pure content parser, even if a Jinja template is specified; model will output everything in the content section, including any reasoning and/or tool calls (default: disabled)<br/>(env: LLAMA_ARG_SKIP_CHAT_PARSING) |
+| `--simple-io` | use basic IO for better compatibility in subprocesses and limited consoles |
+| `--log-prompts-dir PATH` | Log prompts to directory (auto-created if not present; only used for debugging, default: disabled) |
+| `--spec-draft-hf, -hfd, -hfrd, --hf-repo-draft <user>/<model>[:quant]` | Same as --hf-repo, but for the draft model (default: unused)<br/>(env: LLAMA_ARG_SPEC_DRAFT_HF_REPO) |
+| `--spec-draft-threads, -td, --threads-draft N` | number of threads to use during generation (default: same as --threads) |
+| `--spec-draft-threads-batch, -tbd, --threads-batch-draft N` | number of threads to use during batch and prompt processing (default: same as --threads-draft) |
+| `--spec-draft-cpu-mask, -Cd, --cpu-mask-draft M` | Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask) |
+| `--spec-draft-cpu-range, -Crd, --cpu-range-draft lo-hi` | Ranges of CPUs for affinity. Complements --cpu-mask-draft |
+| `--spec-draft-cpu-strict, --cpu-strict-draft <0\|1>` | Use strict CPU placement for draft model (default: same as --cpu-strict) |
+| `--spec-draft-prio, --prio-draft N` | set draft process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0) |
+| `--spec-draft-poll, --poll-draft <0\|1>` | Use polling to wait for draft model work (default: same as --poll) |
+| `--spec-draft-cpu-mask-batch, -Cbd, --cpu-mask-batch-draft M` | Draft model CPU affinity mask. Complements cpu-range-draft (default: same as --cpu-mask) |
+| `--spec-draft-cpu-strict-batch, --cpu-strict-batch-draft <0\|1>` | Use strict CPU placement for draft model (default: --cpu-strict-draft) |
+| `--spec-draft-prio-batch, --prio-batch-draft N` | set draft process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0) |
+| `--spec-draft-poll-batch, --poll-batch-draft <0\|1>` | Use polling to wait for draft model work (default: --poll-draft) |
+| `--spec-draft-override-tensor, -otd, --override-tensor-draft <tensor name pattern>=<buffer type>,...` | override tensor buffer type for draft model |
+| `--spec-draft-cpu-moe, -cmoed, --cpu-moe-draft` | keep all Mixture of Experts (MoE) weights in the CPU for the draft model<br/>(env: LLAMA_ARG_SPEC_DRAFT_CPU_MOE) |
+| `--spec-draft-n-cpu-moe, --spec-draft-ncmoe, -ncmoed, --n-cpu-moe-draft N` | keep the Mixture of Experts (MoE) weights of the first N layers in the CPU for the draft model<br/>(env: LLAMA_ARG_SPEC_DRAFT_N_CPU_MOE) |
+| `--spec-draft-n-max N` | number of tokens to draft for speculative decoding (default: 3)<br/>(env: LLAMA_ARG_SPEC_DRAFT_N_MAX) |
+| `--spec-draft-n-min N` | minimum number of draft tokens to use for speculative decoding (default: 0)<br/>(env: LLAMA_ARG_SPEC_DRAFT_N_MIN) |
+| `--spec-draft-p-split, --draft-p-split P` | speculative decoding split probability (default: 0.10)<br/>(env: LLAMA_ARG_SPEC_DRAFT_P_SPLIT) |
+| `--spec-draft-p-min, --draft-p-min P` | minimum speculative decoding probability (greedy) (default: 0.00)<br/>(env: LLAMA_ARG_SPEC_DRAFT_P_MIN) |
+| `--spec-draft-backend-sampling, --no-spec-draft-backend-sampling` | offload draft sampling to the backend (default: enabled)<br/>(env: LLAMA_ARG_SPEC_DRAFT_BACKEND_SAMPLING) |
+| `--spec-draft-device, -devd, --device-draft <dev1,dev2,..>` | comma-separated list of devices to use for offloading the draft model (none = don't offload)<br/>use --list-devices to see a list of available devices |
+| `--spec-draft-ngl, -ngld, --gpu-layers-draft, --n-gpu-layers-draft N` | max. number of draft model layers to store in VRAM, either an exact number, 'auto', or 'all' (default: auto)<br/>(env: LLAMA_ARG_N_GPU_LAYERS_DRAFT) |
+| `--spec-draft-model, -md, --model-draft FNAME` | draft model for speculative decoding (default: unused)<br/>(env: LLAMA_ARG_SPEC_DRAFT_MODEL) |
+| `--spec-type none,draft-simple,draft-eagle3,draft-mtp,draft-dflash,draft-dspark,ngram-simple,ngram-map-k,ngram-map-k4v,ngram-mod,ngram-cache` | comma-separated list of types of speculative decoding to use (default: none)<br/><br/>(env: LLAMA_ARG_SPEC_TYPE) |
+| `--spec-ngram-mod-n-min N` | minimum number of ngram tokens to use for ngram-based speculative decoding (default: 48) |
+| `--spec-ngram-mod-n-max N` | maximum number of ngram tokens to use for ngram-based speculative decoding (default: 64) |
+| `--spec-ngram-mod-n-match N` | ngram-mod lookup length (default: 24) |
+| `--spec-ngram-simple-size-n N` | ngram size N for ngram-simple speculative decoding, length of lookup n-gram (default: 12) |
+| `--spec-ngram-simple-size-m N` | ngram size M for ngram-simple speculative decoding, length of draft m-gram (default: 48) |
+| `--spec-ngram-simple-min-hits N` | minimum hits for ngram-simple speculative decoding (default: 1) |
+| `--spec-ngram-map-k-size-n N` | ngram size N for ngram-map-k speculative decoding, length of lookup n-gram (default: 12) |
+| `--spec-ngram-map-k-size-m N` | ngram size M for ngram-map-k speculative decoding, length of draft m-gram (default: 48) |
+| `--spec-ngram-map-k-min-hits N` | minimum hits for ngram-map-k speculative decoding (default: 1) |
+| `--spec-ngram-map-k4v-size-n N` | ngram size N for ngram-map-k4v speculative decoding, length of lookup n-gram (default: 12) |
+| `--spec-ngram-map-k4v-size-m N` | ngram size M for ngram-map-k4v speculative decoding, length of draft m-gram (default: 48) |
+| `--spec-ngram-map-k4v-min-hits N` | minimum hits for ngram-map-k4v speculative decoding (default: 1) |
+| `--draft, --draft-n, --draft-max N` | the argument has been removed. use --spec-draft-n-max or --spec-ngram-mod-n-max<br/>(env: LLAMA_ARG_DRAFT_MAX) |
+| `--draft-min, --draft-n-min N` | the argument has been removed. use --spec-draft-n-min or --spec-ngram-mod-n-min<br/>(env: LLAMA_ARG_DRAFT_MIN) |
+| `--gpt-oss-20b-default` | use gpt-oss-20b (note: can download weights from the internet) |
+| `--gpt-oss-120b-default` | use gpt-oss-120b (note: can download weights from the internet) |
+| `--vision-gemma-4b-default` | use Gemma 3 4B QAT (note: can download weights from the internet) |
+| `--vision-gemma-12b-default` | use Gemma 3 12B QAT (note: can download weights from the internet) |
+| `--spec-default` | enable default speculative decoding config |
+
+<!-- HELP_END -->
+[0m
+I found the information I need. Let me also search for flash attention details:
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/ggml/src?ref=master" 2>&1 | grep '"name"' | head -30
+(no output)
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src?ref=master" 2>&1 | grep '"name"' | head -30
+"name": "CMakeLists.txt",
+    "name": "llama-adapter.cpp",
+    "name": "llama-adapter.h",
+    "name": "llama-arch.cpp",
+    "name": "llama-arch.h",
+    "name": "llama-batch.cpp",
+    "name": "llama-batch.h",
+    "name": "llama-chat.cpp",
+    "name": "llama-chat.h",
+    "name": "llama-context.cpp",
+    "name": "llama-context.h",
+    "name": "llama-cparams.cpp",
+    "name": "llama-cparams.h",
+    "name": "llama-ext.h",
+    "name": "llama-grammar.cpp",
+    "name": "llama-grammar.h",
+    "name": "llama-graph.cpp",
+    "name": "llama-graph.h",
+    "name": "llama-hparams.cpp",
+    "name": "llama-hparams.h",
+    "name": "llama-impl.cpp",
+    "name": "llama-impl.h",
+    "name": "llama-io.cpp",
+    "name": "llama-io.h",
+    "name": "llama-kv-cache-dsa.cpp",
+    "name": "llama-kv-cache-dsa.h",
+    "name": "llama-kv-cache-dsv4.cpp",
+    "name": "llama-kv-cache-dsv4.h",
+    "name": "llama-kv-cache-iswa.cpp",
+    "name": "llama-kv-cache-iswa.h",
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/ggml/src/ggml-flash-attention.cpp" 2>&1 | head -200
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/ggml/src?ref=master" 2>&1 | grep '"name"' | head -50
+(no output)
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/ggml?ref=master" 2>&1 | grep '"name"' | head -50
+(no output)
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/ggml/src" 2>&1 | head -100
+{
+  "message": "Not Found",
+  "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
+  "status": "404"
+}
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src" 2>&1 | head -100
+[
+  {
+    "name": "CMakeLists.txt",
+    "path": "src/CMakeLists.txt",
+    "sha": "39ba3061f7049624de8bfd1db37479c2ef7837cf",
+    "size": 1884,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/CMakeLists.txt?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/CMakeLists.txt",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/39ba3061f7049624de8bfd1db37479c2ef7837cf",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/CMakeLists.txt",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/CMakeLists.txt?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/39ba3061f7049624de8bfd1db37479c2ef7837cf",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/CMakeLists.txt"
+    }
+  },
+  {
+    "name": "llama-adapter.cpp",
+    "path": "src/llama-adapter.cpp",
+    "sha": "3e0fe66afff743b779b0abaf620693f27a63a6c4",
+    "size": 18206,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-adapter.cpp?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-adapter.cpp",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/3e0fe66afff743b779b0abaf620693f27a63a6c4",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-adapter.cpp",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-adapter.cpp?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/3e0fe66afff743b779b0abaf620693f27a63a6c4",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-adapter.cpp"
+    }
+  },
+  {
+    "name": "llama-adapter.h",
+    "path": "src/llama-adapter.h",
+    "sha": "f0b1e50f81695e9b1ef11bbd2db277fc1a921add",
+    "size": 2240,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-adapter.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-adapter.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/f0b1e50f81695e9b1ef11bbd2db277fc1a921add",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-adapter.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-adapter.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/f0b1e50f81695e9b1ef11bbd2db277fc1a921add",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-adapter.h"
+    }
+  },
+  {
+    "name": "llama-arch.cpp",
+    "path": "src/llama-arch.cpp",
+    "sha": "1cd9b758f382754a781e12b5a58fb66de4da19f5",
+    "size": 73605,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-arch.cpp?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-arch.cpp",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/1cd9b758f382754a781e12b5a58fb66de4da19f5",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-arch.cpp",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-arch.cpp?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/1cd9b758f382754a781e12b5a58fb66de4da19f5",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-arch.cpp"
+    }
+  },
+  {
+    "name": "llama-arch.h",
+    "path": "src/llama-arch.h",
+    "sha": "24252b9da976f6d74f6fadccab300ac14cc5f7cc",
+    "size": 20862,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-arch.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-arch.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/24252b9da976f6d74f6fadccab300ac14cc5f7cc",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-arch.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-arch.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/24252b9da976f6d74f6fadccab300ac14cc5f7cc",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-arch.h"
+    }
+  },
+  {
+    "name": "llama-batch.cpp",
+    "path": "src/llama-batch.cpp",
+    "sha": "2b98a552f48f73ed7c29c2e3e48383245f5d39ec",
+    "size": 31110,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-batch.cpp?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-batch.cpp",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/2b98a552f48f73ed7c29c2e3e48383245f5d39ec",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-batch.cpp",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/llama-batch.cpp?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/2b98a552f48f73ed7c29c2e3e48383245f5d39ec",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/src/llama-batch.cpp"
+    }
+  },
+  {
+    "name": "llama-batch.h",
+    "path": "src/llama-batch.h",
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/ggml.cpp" 2>&1 | head -200
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/src/ggml" 2>&1 | head -100
+{
+  "message": "Not Found",
+  "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
+  "status": "404"
+}
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/include/ggml.h" 2>&1 | head -200
+404: Not Found
+[0m
+[0m$ [0mcurl -s "https://api.github.com/repos/ggml-org/llama.cpp/contents/include" 2>&1 | head -100
+[
+  {
+    "name": "llama-cpp.h",
+    "path": "include/llama-cpp.h",
+    "sha": "8f6368177de0918e67daa4059e34519eecb42a78",
+    "size": 900,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/include/llama-cpp.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/include/llama-cpp.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/8f6368177de0918e67daa4059e34519eecb42a78",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/include/llama-cpp.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/include/llama-cpp.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/8f6368177de0918e67daa4059e34519eecb42a78",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/include/llama-cpp.h"
+    }
+  },
+  {
+    "name": "llama.h",
+    "path": "include/llama.h",
+    "sha": "177fc10a9139e7104f07decb8d4d5ded94279b06",
+    "size": 84256,
+    "url": "https://api.github.com/repos/ggml-org/llama.cpp/contents/include/llama.h?ref=master",
+    "html_url": "https://github.com/ggml-org/llama.cpp/blob/master/include/llama.h",
+    "git_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/177fc10a9139e7104f07decb8d4d5ded94279b06",
+    "download_url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/include/llama.h",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/ggml-org/llama.cpp/contents/include/llama.h?ref=master",
+      "git": "https://api.github.com/repos/ggml-org/llama.cpp/git/blobs/177fc10a9139e7104f07decb8d4d5ded94279b06",
+      "html": "https://github.com/ggml-org/llama.cpp/blob/master/include/llama.h"
+    }
+  }
+]
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/include/llama.h" 2>&1 | head -300
+#ifndef LLAMA_H
+#define LLAMA_H
+
+#include "ggml.h"
+#include "ggml-cpu.h"
+#include "ggml-backend.h"
+#include "ggml-opt.h"
+#include "gguf.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+#ifdef LLAMA_SHARED
+#    if defined(_WIN32) && !defined(__MINGW32__)
+#        ifdef LLAMA_BUILD
+#            define LLAMA_API __declspec(dllexport)
+#        else
+#            define LLAMA_API __declspec(dllimport)
+#        endif
+#    else
+#        define LLAMA_API __attribute__ ((visibility ("default")))
+#    endif
+#else
+#    define LLAMA_API
+#endif
+
+#ifdef __GNUC__
+#    define DEPRECATED(func, hint) func __attribute__((deprecated(hint)))
+#elif defined(_MSC_VER)
+#    define DEPRECATED(func, hint) __declspec(deprecated(hint)) func
+#else
+#    define DEPRECATED(func, hint) func
+#endif
+
+#define LLAMA_DEFAULT_SEED 0xFFFFFFFF
+
+#define LLAMA_TOKEN_NULL -1
+
+#define LLAMA_FILE_MAGIC_GGLA 0x67676c61u // 'ggla'
+#define LLAMA_FILE_MAGIC_GGSN 0x6767736eu // 'ggsn'
+#define LLAMA_FILE_MAGIC_GGSQ 0x67677371u // 'ggsq'
+
+#define LLAMA_SESSION_MAGIC   LLAMA_FILE_MAGIC_GGSN
+#define LLAMA_SESSION_VERSION 9
+
+#define LLAMA_STATE_SEQ_MAGIC   LLAMA_FILE_MAGIC_GGSQ
+#define LLAMA_STATE_SEQ_VERSION 2
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+    //
+    // C interface
+    //
+    // TODO: show sample usage
+    //
+
+    struct llama_vocab;
+    struct llama_model;
+    struct llama_context;
+    struct llama_sampler;
+
+    typedef struct llama_memory_i * llama_memory_t;
+
+    typedef int32_t llama_pos;
+    typedef int32_t llama_token;
+    typedef int32_t llama_seq_id;
+
+    enum llama_vocab_type {
+        LLAMA_VOCAB_TYPE_NONE   = 0, // For models without vocab
+        LLAMA_VOCAB_TYPE_SPM    = 1, // LLaMA tokenizer based on byte-level BPE with byte fallback
+        LLAMA_VOCAB_TYPE_BPE    = 2, // GPT-2 tokenizer based on byte-level BPE
+        LLAMA_VOCAB_TYPE_WPM    = 3, // BERT tokenizer based on WordPiece
+        LLAMA_VOCAB_TYPE_UGM    = 4, // T5 tokenizer based on Unigram
+        LLAMA_VOCAB_TYPE_RWKV   = 5, // RWKV tokenizer based on greedy tokenization
+        LLAMA_VOCAB_TYPE_PLAMO2 = 6, // PLaMo-2 tokenizer based on Aho-Corasick with dynamic programming
+    };
+
+    enum llama_rope_type {
+        LLAMA_ROPE_TYPE_NONE   = -1,
+        LLAMA_ROPE_TYPE_NORM   = 0,
+        LLAMA_ROPE_TYPE_NEOX   = GGML_ROPE_TYPE_NEOX,
+        LLAMA_ROPE_TYPE_MROPE  = GGML_ROPE_TYPE_MROPE,
+        LLAMA_ROPE_TYPE_IMROPE = GGML_ROPE_TYPE_IMROPE,
+        LLAMA_ROPE_TYPE_VISION = GGML_ROPE_TYPE_VISION,
+    };
+
+    enum llama_token_type { //TODO: remove, required until per token attributes are available from GGUF file
+        LLAMA_TOKEN_TYPE_UNDEFINED    = 0,
+        LLAMA_TOKEN_TYPE_NORMAL       = 1,
+        LLAMA_TOKEN_TYPE_UNKNOWN      = 2,
+        LLAMA_TOKEN_TYPE_CONTROL      = 3,
+        LLAMA_TOKEN_TYPE_USER_DEFINED = 4,
+        LLAMA_TOKEN_TYPE_UNUSED       = 5,
+        LLAMA_TOKEN_TYPE_BYTE         = 6,
+    };
+
+    enum llama_token_attr {
+        LLAMA_TOKEN_ATTR_UNDEFINED    = 0,
+        LLAMA_TOKEN_ATTR_UNKNOWN      = 1 << 0,
+        LLAMA_TOKEN_ATTR_UNUSED       = 1 << 1,
+        LLAMA_TOKEN_ATTR_NORMAL       = 1 << 2,
+        LLAMA_TOKEN_ATTR_CONTROL      = 1 << 3,  // SPECIAL?
+        LLAMA_TOKEN_ATTR_USER_DEFINED = 1 << 4,
+        LLAMA_TOKEN_ATTR_BYTE         = 1 << 5,
+        LLAMA_TOKEN_ATTR_NORMALIZED   = 1 << 6,
+        LLAMA_TOKEN_ATTR_LSTRIP       = 1 << 7,
+        LLAMA_TOKEN_ATTR_RSTRIP       = 1 << 8,
+        LLAMA_TOKEN_ATTR_SINGLE_WORD  = 1 << 9,
+    };
+
+    // model file types
+    enum llama_ftype {
+        LLAMA_FTYPE_ALL_F32              = 0,
+        LLAMA_FTYPE_MOSTLY_F16           = 1,  // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_0          = 2,  // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_1          = 3,  // except 1d tensors
+        // LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4,  // tok_embeddings.weight and output.weight are F16
+        // LLAMA_FTYPE_MOSTLY_Q4_2       = 5,  // support has been removed
+        // LLAMA_FTYPE_MOSTLY_Q4_3       = 6,  // support has been removed
+        LLAMA_FTYPE_MOSTLY_Q8_0          = 7,  // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_0          = 8,  // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_1          = 9,  // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q2_K          = 10, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q3_K_S        = 11, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q3_K_M        = 12, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q3_K_L        = 13, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_K_S        = 14, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_K_M        = 15, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_K_S        = 16, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_K_M        = 17, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q6_K          = 18, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ2_XXS       = 19, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ2_XS        = 20, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q2_K_S        = 21, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ3_XS        = 22, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ3_XXS       = 23, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ1_S         = 24, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ4_NL        = 25, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ3_S         = 26, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ3_M         = 27, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ2_S         = 28, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ2_M         = 29, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ4_XS        = 30, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_IQ1_M         = 31, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_BF16          = 32, // except 1d tensors
+        //LLAMA_FTYPE_MOSTLY_Q4_0_4_4      = 33, // removed from gguf files, use Q4_0 and runtime repack
+        //LLAMA_FTYPE_MOSTLY_Q4_0_4_8      = 34, // removed from gguf files, use Q4_0 and runtime repack
+        //LLAMA_FTYPE_MOSTLY_Q4_0_8_8      = 35, // removed from gguf files, use Q4_0 and runtime repack
+        LLAMA_FTYPE_MOSTLY_TQ1_0         = 36, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_TQ2_0         = 37, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_MXFP4_MOE     = 38, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_NVFP4         = 39, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q1_0          = 40, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q2_0          = 41, // except 1d tensors
+
+        LLAMA_FTYPE_GUESSED = 1024, // not specified in the model file
+    };
+
+    // Get the model file type (quantization) as a string, e.g. "Q8_0" or "Q4_K - Medium"
+    LLAMA_API const char * llama_ftype_name(enum llama_ftype ftype);
+
+    enum llama_rope_scaling_type {
+        LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED = -1,
+        LLAMA_ROPE_SCALING_TYPE_NONE        = 0,
+        LLAMA_ROPE_SCALING_TYPE_LINEAR      = 1,
+        LLAMA_ROPE_SCALING_TYPE_YARN        = 2,
+        LLAMA_ROPE_SCALING_TYPE_LONGROPE    = 3,
+        LLAMA_ROPE_SCALING_TYPE_MAX_VALUE   = LLAMA_ROPE_SCALING_TYPE_LONGROPE,
+    };
+
+    enum llama_pooling_type {
+        LLAMA_POOLING_TYPE_UNSPECIFIED = -1,
+        LLAMA_POOLING_TYPE_NONE = 0,
+        LLAMA_POOLING_TYPE_MEAN = 1,
+        LLAMA_POOLING_TYPE_CLS  = 2,
+        LLAMA_POOLING_TYPE_LAST = 3,
+        LLAMA_POOLING_TYPE_RANK = 4, // used by reranking models to attach the classification head to the graph
+    };
+
+    enum llama_attention_type {
+        LLAMA_ATTENTION_TYPE_UNSPECIFIED = -1,
+        LLAMA_ATTENTION_TYPE_CAUSAL      = 0,
+        LLAMA_ATTENTION_TYPE_NON_CAUSAL  = 1,
+    };
+
+    enum llama_flash_attn_type {
+        LLAMA_FLASH_ATTN_TYPE_AUTO     = -1,
+        LLAMA_FLASH_ATTN_TYPE_DISABLED = 0,
+        LLAMA_FLASH_ATTN_TYPE_ENABLED  = 1,
+    };
+
+    LLAMA_API const char * llama_flash_attn_type_name(enum llama_flash_attn_type flash_attn_type);
+
+    enum llama_split_mode {
+        LLAMA_SPLIT_MODE_NONE   = 0, // single GPU
+        LLAMA_SPLIT_MODE_LAYER  = 1, // split layers and KV across GPUs
+        LLAMA_SPLIT_MODE_ROW    = 2, // split layers and KV across GPUs, use tensor parallelism if supported
+        LLAMA_SPLIT_MODE_TENSOR = 3,
+    };
+
+    enum llama_load_mode {
+        LLAMA_LOAD_MODE_AUTO       = -1, // auto-detect based on device capabilities
+        LLAMA_LOAD_MODE_NONE       =  0, // no special loading mode
+        LLAMA_LOAD_MODE_MMAP       =  1, // memory map the model
+        LLAMA_LOAD_MODE_MLOCK      =  2, // force system to keep model in RAM rather than swapping or compressing
+        LLAMA_LOAD_MODE_MMAP_MLOCK =  3, // mmap + force system to keep model in RAM rather than swapping or compressing
+        LLAMA_LOAD_MODE_DIRECT_IO  =  4, // use direct I/O if available
+    };
+
+    LLAMA_API const char * llama_load_mode_name(enum llama_load_mode load_mode);
+    LLAMA_API enum llama_load_mode llama_load_mode_from_str(const char * str);
+
+    enum llama_context_type {
+        LLAMA_CONTEXT_TYPE_DEFAULT = 0,
+        LLAMA_CONTEXT_TYPE_MTP     = 1,
+    };
+
+    // TODO: simplify (https://github.com/ggml-org/llama.cpp/pull/9294#pullrequestreview-2286561979)
+    typedef struct llama_token_data {
+        llama_token id; // token id
+        float logit;    // log-odds of the token
+        float p;        // probability of the token
+    } llama_token_data;
+
+    typedef struct llama_token_data_array {
+        // TODO: consider SoA
+        // NOTE: this pointer can be modified by the samplers
+        llama_token_data * data;
+        size_t size;
+        int64_t selected; // this is the index in the data array (i.e. not the token id)
+        bool sorted;      // note: do not assume the data is sorted - always check this flag
+    } llama_token_data_array;
+
+    typedef bool (*llama_progress_callback)(float progress, void * user_data);
+
+    // Input data for llama_encode/llama_decode
+    // A llama_batch object can contain input about one or many sequences
+    // The provided arrays (i.e. token, embd, pos, etc.) must have size of n_tokens
+    //
+    // - token  : the token ids of the input (used when embd is NULL)
+    // - embd   : token embeddings (i.e. float vector of size n_embd) (used when token is NULL)
+    // - pos    : the positions of the respective token in the sequence
+    //            (if set to NULL, the token position will be tracked automatically by llama_encode/llama_decode)
+    // - seq_id : the sequence to which the respective token belongs
+    //            (if set to NULL, the sequence ID will be assumed to be 0)
+    // - logits : if zero, the logits (and/or the embeddings) for the respective token will not be output
+    //            (if set to NULL:
+    //               - if embeddings: all tokens are output
+    //               - if not:        only the last token is output
+    //            )
+    //
+    typedef struct llama_batch {
+        int32_t n_tokens;
+
+        llama_token  *  token;
+        float        *  embd;
+        llama_pos    *  pos;
+        int32_t      *  n_seq_id;
+        llama_seq_id ** seq_id;
+        int8_t       *  logits;   // TODO: rename this to "output"
+    } llama_batch;
+
+    enum llama_model_kv_override_type {
+        LLAMA_KV_OVERRIDE_TYPE_INT,
+        LLAMA_KV_OVERRIDE_TYPE_FLOAT,
+        LLAMA_KV_OVERRIDE_TYPE_BOOL,
+        LLAMA_KV_OVERRIDE_TYPE_STR,
+    };
+
+    enum llama_model_meta_key {
+        LLAMA_MODEL_META_KEY_SAMPLING_SEQUENCE,
+        LLAMA_MODEL_META_KEY_SAMPLING_TOP_K,
+        LLAMA_MODEL_META_KEY_SAMPLING_TOP_P,
+        LLAMA_MODEL_META_KEY_SAMPLING_MIN_P,
+        LLAMA_MODEL_META_KEY_SAMPLING_XTC_PROBABILITY,
+        LLAMA_MODEL_META_KEY_SAMPLING_XTC_THRESHOLD,
+        LLAMA_MODEL_META_KEY_SAMPLING_TEMP,
+        LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_LAST_N,
+        LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_REPEAT,
+        LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT,
+        LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_TAU,
+        LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_ETA,
+    };
+
+    struct llama_model_kv_override {
+        enum llama_model_kv_override_type tag;
+
+        char key[128];
+
+        union {
+            int64_t val_i64;
+            double  val_f64;
+            bool    val_bool;
+            char    val_str[128];
+        };
+    };
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/include/llama.h" 2>&1 | grep -A 5 -B 5 "flash_attn"
+LLAMA_ATTENTION_TYPE_UNSPECIFIED = -1,
+        LLAMA_ATTENTION_TYPE_CAUSAL      = 0,
+        LLAMA_ATTENTION_TYPE_NON_CAUSAL  = 1,
+    };
+
+    enum llama_flash_attn_type {
+        LLAMA_FLASH_ATTN_TYPE_AUTO     = -1,
+        LLAMA_FLASH_ATTN_TYPE_DISABLED = 0,
+        LLAMA_FLASH_ATTN_TYPE_ENABLED  = 1,
+    };
+
+    LLAMA_API const char * llama_flash_attn_type_name(enum llama_flash_attn_type flash_attn_type);
+
+    enum llama_split_mode {
+        LLAMA_SPLIT_MODE_NONE   = 0, // single GPU
+        LLAMA_SPLIT_MODE_LAYER  = 1, // split layers and KV across GPUs
+        LLAMA_SPLIT_MODE_ROW    = 2, // split layers and KV across GPUs, use tensor parallelism if supported
+--
+
+        enum llama_context_type      ctx_type;          // set the context type (e.g. MTP)
+        enum llama_rope_scaling_type rope_scaling_type; // RoPE scaling type, from `enum llama_rope_scaling_type`
+        enum llama_pooling_type      pooling_type;      // whether to pool (sum) embedding results by sequence id
+        enum llama_attention_type    attention_type;    // attention type to use for embeddings
+        enum llama_flash_attn_type   flash_attn_type;   // when to enable Flash Attention
+
+        // ref: https://github.com/ggml-org/llama.cpp/pull/2054
+        float    rope_freq_base;   // RoPE base frequency, 0 = from model
+        float    rope_freq_scale;  // RoPE frequency scaling factor, 0 = from model
+        float    yarn_ext_factor;  // YaRN extrapolation mix factor, negative = from model
+[0m
+Now I have enough information. Let me search for more details on flash attention:
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-batch.cpp" 2>&1 | grep -A 10 -B 10 "flash" | head -50
+(no output)
+[0m
+[0m$ [0mcurl -s "https://raw.githubusercontent.com/ggml-org/llama.cpp/master/src/llama-arch.cpp" 2>&1 | grep -i "flash" | head -20
+{ LLM_ARCH_DFLASH,           "dflash"           },
+[0m
+Now I have enough information from the CLI README. Let me create the KV_NOTES.md file:
+[0m← [0mWrite KV_NOTES.md
+Wrote file successfully.
+[0m
+Done! I've researched the two llama.cpp flags and created `KV_NOTES.md` with:
+
+1. **`--cache-type-k`**: Explains that this sets the KV cache data type for the K attention projection, with options ranging from f32 to various quantized formats.
+
+2. **`-fa` (flash attention)**: Explains that this enables Flash Attention, an optimized attention implementation that improves speed and reduces memory bandwidth, with three modes: on, off, and auto.
+
+3. **Sources**: Listed the URL from the llama.cpp CLI README where I found this information.

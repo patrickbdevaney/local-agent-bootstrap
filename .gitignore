@@ -13,3 +13,6 @@ logs/
 scratch-test/
 __pycache__/
 *.pyc
+
+# agent working trees keep their own git dirs; don't nest them
+projects/work/*/.git/

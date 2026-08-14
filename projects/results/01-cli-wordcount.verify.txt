@@ -1,0 +1,9 @@
+  PASS  wordcount.py exists
+  PASS  test_wordcount.py exists
+  PASS  count_words is defined
+  PASS  argparse is used
+  PASS  pytest passes
+  PASS  sample.txt NOT modified
+  PASS  CLI runs
+  PASS  top word is 'the' with count 4
+  PASS  prints 3 lines

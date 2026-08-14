@@ -1,0 +1,8 @@
+[
+  {"level": "info",  "service": "api",   "ms": 100},
+  {"level": "info",  "service": "api",   "ms": 200},
+  {"level": "error", "service": "api",   "ms": 300},
+  {"level": "info",  "service": "db",    "ms": 50},
+  {"level": "warn",  "service": "db",    "ms": 150},
+  {"level": "error", "service": "cache", "ms": 10}
+]
