@@ -8,7 +8,7 @@ Everything here was executed on real hardware on **2026-08-14**. Nothing is aspi
 
 ## Purpose
 
-This is the **dry run**. The real target is Qwen3.8-27B on a Windows/WSL2 box with a much larger card. Proving the pattern on an 8 GB laptop GPU first was deliberate: every constraint that bites at 8 GB — VRAM budget, KV sizing, quant choice, speculative-decoding overhead — is looser at 24 or 32 GB, but the *mechanisms* are identical. A gotcha found here is a gotcha avoided there.
+This is the **dry run**. The real target is Qwen3.8-27B on an RTX 5090 (32 GB) under Windows/WSL2. Proving the pattern on an 8 GB laptop GPU first was deliberate: every constraint that bites at 8 GB — VRAM budget, KV sizing, quant choice, speculative-decoding overhead — is looser at 32 GB, but the *mechanisms* are identical. A gotcha found here is a gotcha avoided there.
 
 ---
 
@@ -39,7 +39,7 @@ This is the **dry run**. The real target is Qwen3.8-27B on a Windows/WSL2 box wi
 | Page | Contents |
 |---|---|
 | [09 — Validation Results](09-Validation-Results.md) | Benchmarks, tool-call battery, end-to-end task, failure-path tests. |
-| [11 — Porting to 27B](11-Porting-to-27B.md) | **The handoff.** Sizing method, worked examples for 24 GB and 32 GB, checklist. |
+| [11 — Porting to 27B](11-Porting-to-27B.md) | **The handoff.** Sizing method, worked 32 GB budget, WSL2 specifics, checklist. |
 
 ---
 

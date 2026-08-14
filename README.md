@@ -2,9 +2,9 @@
 
 A **fully local coding agent**: [OpenCode](https://opencode.ai) as the harness, [llama.cpp](https://github.com/ggml-org/llama.cpp) as the inference server, a Qwen3.5 gated-delta hybrid GGUF as the model, and a local search stack (SearXNG + crawl4ai) exposed to the agent over MCP. No cloud inference. No API key required to code.
 
-This repository is **not a plan**. Every command, flag, config file, and number in it comes from a real end-to-end install that was executed and validated on 2026-08-14. It exists to be the calibrated reference for a second, larger install — **Qwen3.8-27B on a Windows/WSL2 box** — so that run does not have to rediscover the same dozen gotchas.
+This repository is **not a plan**. Every command, flag, config file, and number in it comes from a real end-to-end install that was executed and validated on 2026-08-14. It exists to be the calibrated reference for a second, larger install — **Qwen3.8-27B on an RTX 5090 under Windows/WSL2** — so that run does not have to rediscover the same dozen gotchas.
 
-> **Scope note.** This build targets an 8 GB RTX 4060 Laptop GPU deliberately. The point was never decode speed; it was to prove the *pattern* — hybrid-architecture GGUF serving, MTP speculative decoding, tool calling, MCP search, and clean failure behavior — on hardware small enough that every constraint bites. Everything that bites at 8 GB is easier at 24 GB or 32 GB.
+> **Scope note.** This build targets an 8 GB RTX 4060 Laptop GPU deliberately. The point was never decode speed; it was to prove the *pattern* — hybrid-architecture GGUF serving, MTP speculative decoding, tool calling, MCP search, and clean failure behavior — on hardware small enough that every constraint bites. Everything that bites at 8 GB is easier on the 32 GB target.
 
 ---
 
@@ -170,9 +170,9 @@ The eleven findings below cost real time to discover. They are the reason this r
 
 ---
 
-## Porting to Qwen3.8-27B on Windows/WSL2
+## Porting to Qwen3.8-27B on an RTX 5090 (Windows/WSL2)
 
-That is the reason this exists. The full method — including how to compute the KV budget for a model you have not downloaded yet, and worked examples for both a 24 GB and a 32 GB card — is in **[`wiki/11-Porting-to-27B.md`](wiki/11-Porting-to-27B.md)**.
+That is the reason this exists. The full method — including how to compute the KV budget for a model you have not downloaded yet, and a worked 32 GB budget — is in **[`wiki/11-Porting-to-27B.md`](wiki/11-Porting-to-27B.md)**.
 
 The short version:
 

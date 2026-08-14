@@ -1,8 +1,8 @@
-# 11 — Porting to Qwen3.8-27B on Windows/WSL2
+# 11 — Porting to Qwen3.8-27B on an RTX 5090 (Windows/WSL2)
 
 The handoff page. Everything validated on the 8 GB Linux box, translated into what changes on the target.
 
-> **⚠ Target hardware needs confirming.** The original directive specified an **RTX 5090 (32 GB, Blackwell, SM120)**; a later instruction said **RTX 3090 (24 GB, Ampere, SM86)**. These differ in build flags *and* in whether a 27B fits at long context. **Both are worked below** — confirm which card before starting, then use that column. Where a number depends on the card, it is given for both.
+> **Target: RTX 5090 — 32 GB, Blackwell, compute capability 12.0 (`SM120`).** Confirmed. Build with `-DCMAKE_CUDA_ARCHITECTURES=120` and a **CUDA 12.8 or newer** toolkit; older toolkits do not know SM120 and will fail or silently fall back.
 
 ---
 
@@ -18,8 +18,8 @@ The handoff page. Everything validated on the 8 GB Linux box, translated into wh
 
 | | This build | 27B target |
 |---|---|---|
-| GPU | RTX 4060 Laptop, 8 GB, SM89 | RTX 3090 (24 GB, SM86) **or** RTX 5090 (32 GB, SM120) |
-| `CMAKE_CUDA_ARCHITECTURES` | `89` | **`86`** or **`120`** |
+| GPU | RTX 4060 Laptop, 8 GB, SM89 | **RTX 5090, 32 GB, SM120** |
+| `CMAKE_CUDA_ARCHITECTURES` | `89` | **`120`** |
 | OS | native Ubuntu | **Windows + WSL2** |
 | Display on the GPU | none (iGPU drives it) | **Windows desktop shares the card** |
 | Model | 4B, 3.3 GB | 27B, ~15–20 GB depending on quant |
@@ -95,16 +95,34 @@ On the validation box the desktop used **4 MiB** of dGPU because the display ran
 nvidia-smi --query-gpu=memory.used,memory.free --format=csv
 ```
 
-### The two cards
+### The budget on 32 GB
 
-| | RTX 3090 (24 GB) | RTX 5090 (32 GB) |
-|---|---|---|
-| Nominal | 24,576 MiB | 32,768 MiB |
-| Expect usable | ~23,000 MiB | ~31,000 MiB |
-| Less desktop margin (~2 GB) | ~21,000 MiB | ~29,000 MiB |
-| Less weights + overheads | **tight** — Q4-class quant likely required | comfortable at Q5/Q6-class |
+| | |
+|---|---|
+| Nominal | 32,768 MiB |
+| Expect usable (runtime-reported) | ~31,000 MiB |
+| Less Windows desktop margin | ~29,000 MiB |
 
-**On the 3090 specifically:** a 27B at Q5 or above may not leave room for both MTP and long context. Expect to choose two of {high quant, long context, MTP}. Decide which matters by measuring, not by guessing — and note that MTP bought 1.45× decode here, which is a large amount to give up.
+A worked template — **the two starred rows must be measured, not assumed**:
+
+```
+usable (runtime-reported)                        ~31,000 MiB
+− Windows desktop / browser margin                 2,000
+− model weights (Q5-class 27B)  *measure*        ~19,000
+− MTP draft context             *measure*         2,000–4,000
+− compute buffer                                  1,000–1,500
+− GDN recurrent state                               ~500
+− CUDA context                                      ~200
+                                                 ───────────
+  available for KV                                ~4,000–6,300 MiB
+```
+
+At 34–51 KiB/token that lands somewhere around **80K–180K context**, which is comfortable. 32 GB means you are **not** forced to trade quant against context against MTP — expect a Q5- or Q6-class quant, long context, and MTP all at once.
+
+> **The two numbers to measure first.** Weights come straight from the GGUF file size. The MTP draft context is the one that could surprise you: it was 682 MiB against 3,141 MiB of weights on the 4B (~22%). If that ratio holds it is ~4 GB on a 19 GB model — still affordable at 32 GB, but read it from the log rather than assuming:
+> ```
+> srv load_model: [spec] estimated memory usage of MTP context is XXXX MiB
+> ```
 
 ### Context lookup
 
@@ -143,14 +161,11 @@ If `nvidia-smi` works but builds can't find `libcuda`, add `/usr/lib/wsl/lib` to
 ### Build flags
 
 ```bash
-# RTX 3090 (Ampere)
-cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86 -DLLAMA_CURL=ON -DCMAKE_BUILD_TYPE=Release
-
-# RTX 5090 (Blackwell)
+# RTX 5090 (Blackwell, SM120)
 cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DLLAMA_CURL=ON -DCMAKE_BUILD_TYPE=Release
 ```
 
-Blackwell needs a **CUDA 12.8+ toolkit**; older toolkits do not know SM120 and will fail or silently fall back. Confirm the compute capability from the runtime rather than from a table:
+Blackwell needs a **CUDA 12.8 or newer toolkit**; older ones do not know SM120 and will fail to compile or silently fall back to a slower path. Confirm the compute capability from the runtime rather than from a table:
 
 ```bash
 ./build/bin/llama-server --version   # prints "compute capability X.Y"
@@ -206,7 +221,7 @@ Only worth it if you want `agent up` replaced by a user unit. The `nohup` + PID-
 5. **Smoke load at `-c 4096`.** Seconds to fail instead of minutes.
 6. **Try auto-fit** — launch without `-ngl` and `-c` and see what it picks. On a big card this is more likely to beat hand-tuning than it was here.
 7. **Test `--reasoning off` immediately.** One flag. It was the single biggest blocker.
-8. **Measure MTP on vs off.** It was 1.45× here for +682 MiB; on a 24 GB card that trade may or may not survive.
+8. **Measure MTP on vs off.** It was 1.45× here for +682 MiB. At 32 GB the VRAM cost should be easy to absorb, but confirm the speedup actually holds at 27B rather than assuming it transfers.
 9. **Verify with a long prompt** at ~25% of target context and confirm VRAM doesn't move.
 10. **Then** wire OpenCode and the MCP server — they are the parts least likely to surprise you.
 
@@ -240,7 +255,7 @@ Nothing else needs to change. `mcp/search-server.mjs` is model-agnostic.
 Stated plainly so they aren't mistaken for settled:
 
 1. **Does the 27B also run away with thinking on?** Untested. It may handle reasoning far better at scale — or not. One flag to find out.
-2. **Does MTP still pay at 27B?** The draft context scales with model size. 1.45× for 682 MiB was clearly worth it; the same ratio at several GB on a 24 GB card is a real decision.
+2. **Does MTP still pay at 27B?** The draft context scales with model size — likely 2–4 GB. At 32 GB that is affordable; the open question is whether the 0.71 draft-acceptance rate and 1.45× speedup hold at 27B, or whether a larger target model makes the small draft head less useful.
 3. **Is a 27B good enough for large refactors?** The 4B handled small, well-specified tasks correctly ([09](09-Validation-Results.md), [`docs/AGENT_RUNS.md`](../docs/AGENT_RUNS.md)) and was never evaluated beyond that. **This run validates the plumbing, not the model's ceiling.**
 4. **Windows desktop VRAM tax.** The validation box had effectively none. Measure it early — it comes straight out of your context budget.
 
