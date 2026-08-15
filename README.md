@@ -159,6 +159,8 @@ The eleven findings below cost real time to discover. They are the reason this r
 | 10 | **Port 8080 collides** — llama-server's documented default is often already taken. | Used 8090. [→](wiki/10-Gotchas-and-Deviations.md#10-port-collisions) |
 | 11 | **Inventory first beat building twice.** An existing container stood the search stack up in minutes. | Saved a whole phase. [→](wiki/01-Inventory-First.md) |
 | 12 | **A headless browser is the wrong default for extraction.** A 7.8 MB Rust service is **~13–37× faster and ~11× lighter** than headless Chromium while extracting *more* content. Keep the browser as a fallback rung, not the front door. | [→](extractor/README.md) |
+| 13 | **SearXNG cannot be the only source layer.** All three of its engines went down mid-session and search returned nothing. Keyless structured APIs (arXiv, Semantic Scholar, HN, Stack Exchange) fused by RRF answered the same query with six relevant papers. | [→](wiki/06-Search-Stack.md) |
+| 14 | **Rate limits are account-scoped, not credential-scoped.** More credentials on one account add no throughput; a second *provider* does. Concurrency = sum of per-provider lanes, with a local lane last so it degrades instead of failing. | [→](wiki/06-Search-Stack.md) |
 
 ---
 
@@ -198,6 +200,8 @@ bin/toolcall-battery.py   10-case tool-calling validation
 config/opencode.json      working OpenCode V2 provider + MCP config
 extractor/                extractd - native Rust extraction service (rung 1)
 mcp/search-server.mjs     dependency-free MCP server (web_search, web_fetch, deep_research)
+mcp/sources.mjs           structured source adapters + RRF fusion
+mcp/lanes.mjs             multi-provider inference lanes
 projects/                 agentic engineering projects run against the stack
 experiments/              controlled experiments (reasoning cost vs prompt/budget)
 docs/AGENT_RUNS.md        results of those runs

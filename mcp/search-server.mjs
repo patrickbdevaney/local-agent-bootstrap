@@ -20,6 +20,9 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { buildLanes, Pool } from "./lanes.mjs";
+import * as sources from "./sources.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
@@ -58,8 +61,6 @@ const env = (k, d) => process.env[k] ?? fileEnv[k] ?? d;
 const SEARXNG_URL = env("SEARXNG_URL", "http://127.0.0.1:8080").replace(/\/$/, "");
 const EXTRACTD_URL = env("EXTRACTD_URL", "http://127.0.0.1:11236").replace(/\/$/, "");
 const CRAWL4AI_URL = env("CRAWL4AI_URL", "http://127.0.0.1:11235").replace(/\/$/, "");
-const GROQ_MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile");
-const GROQ_BASE = env("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/$/, "");
 // "normal" = fetch + extract top results (+ optional summary); "shallow" = snippets only.
 const DEFAULT_MODE = env("AGENT_SEARCH_MODE", "normal");
 const FETCH_TIMEOUT_MS = Number(env("AGENT_FETCH_TIMEOUT_MS", "45000"));
@@ -67,11 +68,6 @@ const GROQ_TIMEOUT_MS = Number(env("AGENT_GROQ_TIMEOUT_MS", "30000"));
 // Per-source character budget for a summarization prompt. Keeps each individual
 // request well inside the provider's per-minute token allowance.
 const GROQ_CHARS_PER_SOURCE = Number(env("AGENT_GROQ_CHARS_PER_SOURCE", "2200"));
-// Cool-off applied to an endpoint slot that reports throttling, when the response
-// carries no Retry-After header.
-const GROQ_COOLDOWN_MS = Number(env("AGENT_GROQ_COOLDOWN_MS", "62000"));
-// How long a summarization request waits for a free slot before giving up.
-const GROQ_ACQUIRE_TIMEOUT_MS = Number(env("AGENT_GROQ_ACQUIRE_TIMEOUT_MS", "20000"));
 // SearXNG's upstream engines throttle per-engine and recover over time, so queries
 // are serialised behind a minimum interval rather than issued concurrently. Firing a
 // research cascade in parallel reliably CAPTCHAs every engine at once.
@@ -116,124 +112,39 @@ async function mapLimit(items, limit, fn) {
 // ---------------------------------------------------------------- summarizer transport
 
 /**
- * Endpoint slots for the optional summarizer, in declared order. A slot is leased
- * for the duration of one request, so independent requests proceed in parallel
- * rather than serialising behind one another. A slot that reports throttling is
- * put on a short cool-off and skipped until it expires, which stops a saturated
- * slot from consuming attempts. Capacity scales with however many are configured.
+ * Inference lanes for the optional summarizer. One lane per PROVIDER, because
+ * free-tier limits are account-scoped: stacking credentials on one account does not
+ * multiply throughput, but a second provider does. Total in-flight is the sum of
+ * lane concurrencies. See mcp/lanes.mjs.
+ *
+ * The local lane is the llama-server this stack already runs. It is last and
+ * single-slot: it exists so research still works with no provider configured at
+ * all, not to add capacity. Set POOL_DISABLE_LOCAL=1 to leave it out.
  */
-const SLOTS = (() => {
-  const merged = { ...fileEnv, ...process.env };
-  return Object.keys(merged)
-    .filter((k) => /^GROQ_API_KEY_\d+$/.test(k))
-    .sort((a, b) => Number(a.split("_").pop()) - Number(b.split("_").pop()))
-    .map((k) => merged[k])
-    .filter((v) => v && v.trim().length > 0)
-    .map((secret, i) => ({ id: i + 1, secret, busy: false, cooldownUntil: 0 }));
-})();
+const POOL = new Pool({
+  lanes: buildLanes(
+    { ...fileEnv, ...process.env },
+    { localBaseURL: env("LOCAL_BASE_URL", "http://127.0.0.1:8090/v1"), localModel: "qwen3.5-4b" },
+  ),
+  timeoutMs: GROQ_TIMEOUT_MS,
+  log,
+});
 
-const SUMMARIZER_ENABLED = SLOTS.length > 0;
-/** Upper bound on useful parallelism for summarization work. */
-const SUMMARIZE_CONCURRENCY = Math.max(1, SLOTS.length);
-
-let cursor = 0;
-
-function acquireSlot() {
-  const now = Date.now();
-  for (let i = 0; i < SLOTS.length; i++) {
-    const idx = (cursor + i) % SLOTS.length;
-    const s = SLOTS[idx];
-    if (!s.busy && s.cooldownUntil <= now) {
-      s.busy = true;
-      cursor = (idx + 1) % SLOTS.length;
-      return s;
-    }
-  }
-  return null;
-}
-
-const releaseSlot = (s) => {
-  s.busy = false;
-};
-
-function coolOff(slot, res) {
-  let ms = GROQ_COOLDOWN_MS;
-  const ra = res?.headers?.get?.("retry-after");
-  if (ra) {
-    const secs = Number(ra);
-    if (Number.isFinite(secs) && secs > 0) ms = Math.min(secs * 1000 + 500, 300000);
-  }
-  slot.cooldownUntil = Date.now() + ms;
-  return ms;
-}
+const SUMMARIZER_ENABLED = POOL.available();
 
 /**
- * Run one summarization request. Returns the completion text, or null if the
- * summarizer is unavailable for any reason. Never throws — callers degrade to
- * local-only output.
+ * One summarization request across the lanes. Returns null when no lane can serve
+ * it — callers degrade to local-only output rather than surfacing an error.
  */
 async function summarize(messages, { maxTokens = 900 } = {}) {
   if (!SUMMARIZER_ENABLED) return null;
-
-  const deadline = Date.now() + GROQ_ACQUIRE_TIMEOUT_MS;
-  let attemptsLeft = SLOTS.length;
-
-  while (attemptsLeft > 0) {
-    const slot = acquireSlot();
-    if (!slot) {
-      // Everything is either in flight or cooling off; wait briefly and re-check.
-      if (Date.now() >= deadline) break;
-      await sleep(200);
-      continue;
-    }
-    attemptsLeft--;
-    try {
-      const res = await withTimeout(GROQ_TIMEOUT_MS, (signal) =>
-        fetch(`${GROQ_BASE}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${slot.secret}`,
-          },
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages,
-            max_tokens: maxTokens,
-            temperature: 0.2,
-          }),
-          signal,
-        }),
-      );
-      if (res.status === 429 || res.status === 503) {
-        const ms = coolOff(slot, res);
-        log(`summarizer[${slot.id}]: throttled (${res.status}), cooling ${Math.round(ms / 1000)}s`);
-        continue;
-      }
-      if (!res.ok) {
-        log(`summarizer[${slot.id}]: HTTP ${res.status}`);
-        continue;
-      }
-      const data = await res.json();
-      const text = data?.choices?.[0]?.message?.content;
-      if (!text) {
-        log(`summarizer[${slot.id}]: empty completion`);
-        continue;
-      }
-      return text.trim();
-    } catch (e) {
-      log(`summarizer[${slot.id}]: ${e.name === "AbortError" ? "timeout" : e.message}`);
-    } finally {
-      releaseSlot(slot);
-    }
-  }
-
-  log("summarizer: unavailable, continuing local-only");
-  return null;
+  const out = await POOL.completeOne(messages, { maxTokens });
+  if (!out) log("summarizer: no lane could serve the request, continuing local-only");
+  return out;
 }
 
-/** Run several summarization requests concurrently. Missing results come back null. */
-const summarizeMany = (jobs, opts = {}) =>
-  mapLimit(jobs, SUMMARIZE_CONCURRENCY, (j) => summarize(j, opts));
+/** Fan out several summarization requests across every lane at once. */
+const summarizeMany = (jobs, opts = {}) => POOL.map(jobs, opts);
 
 // ---------------------------------------------------------------- search + extract
 
@@ -425,6 +336,11 @@ const TOOLS = [
           type: "boolean",
           description: "Ask for a synthesized answer in addition to the sources (default true)",
         },
+        structured: {
+          type: "boolean",
+          description:
+            "Also query structured sources (papers, Q&A, discussions) and fuse them with the web results (default true)",
+        },
       },
       required: ["query"],
     },
@@ -478,12 +394,27 @@ async function doWebSearch(args) {
   const mode = args.mode || DEFAULT_MODE;
   const wantSummary = args.summarize !== false;
 
-  let results;
-  try {
-    results = await searxSearch(query, count);
-  } catch (e) {
-    return `Search backend unavailable (${e.message}). No results.`;
-  }
+  // The web layer and the structured APIs are queried CONCURRENTLY and fused, so
+  // neither is a single point of failure. SearXNG's upstream engines throttle and
+  // CAPTCHA constantly; keyless structured sources do not.
+  const useStructured = args.structured !== false;
+  const [webResults, fanout] = await Promise.all([
+    searxSearch(query, count).catch((e) => {
+      log(`searxng unavailable: ${e.message}`);
+      return [];
+    }),
+    useStructured
+      ? sources.sourceFanout(query, { extraLists: [] }).catch((e) => {
+          log(`structured sources failed: ${e.message}`);
+          return { results: [], perSource: {} };
+        })
+      : Promise.resolve({ results: [], perSource: {} }),
+  ]);
+
+  const results = useStructured
+    ? sources.rrfFuse([webResults, fanout.results]).slice(0, Math.max(count, 6))
+    : webResults;
+
   if (results.length === 0) return `No results for: ${query}`;
 
   const lines = [`# Search results for: ${query}`, ""];
@@ -594,12 +525,17 @@ async function doDeepResearch(args) {
   // Search each branch. `searxSearch` paces itself globally, so this is safe to
   // hand off in bulk - the queries still go out one at a time, spaced apart.
   const searched = await mapLimit(queries, queries.length, async (q) => {
-    try {
-      return { query: q, results: await searxSearch(q, depth) };
-    } catch (e) {
-      log(`deep_research: search failed for "${q}": ${e.message}`);
-      return { query: q, results: [] };
-    }
+    const [web, fan] = await Promise.all([
+      searxSearch(q, depth).catch((e) => {
+        log(`deep_research: web search failed for "${q}": ${e.message}`);
+        return [];
+      }),
+      sources.sourceFanout(q).catch((e) => {
+        log(`deep_research: structured sources failed for "${q}": ${e.message}`);
+        return { results: [] };
+      }),
+    ]);
+    return { query: q, results: sources.rrfFuse([web, fan.results]).slice(0, depth) };
   });
 
   // Deduplicate sources by URL across branches before spending extraction on them.
@@ -759,10 +695,18 @@ async function handle(msg) {
   }
 }
 
+sources.setLogger(log);
+
 log(
-  `starting: searxng=${SEARXNG_URL} extractd=${EXTRACTD_URL} crawl4ai=${CRAWL4AI_URL} ` +
-    `summarizer=${SUMMARIZER_ENABLED ? "enabled" : "disabled"} model=${GROQ_MODEL} mode=${DEFAULT_MODE}`,
+  `starting: searxng=${SEARXNG_URL} extractd=${EXTRACTD_URL} crawl4ai=${CRAWL4AI_URL} mode=${DEFAULT_MODE}`,
 );
+{
+  const st = POOL.stats();
+  log(
+    `inference: mode=${st.mode} lanes=[${st.lanes.map((l) => `${l.name}:${l.concurrency}`).join(" ")}] ` +
+      `total_concurrency=${st.totalConcurrency}`,
+  );
+}
 
 // Track in-flight work so closing stdin doesn't kill requests that are still running.
 let pending = 0;

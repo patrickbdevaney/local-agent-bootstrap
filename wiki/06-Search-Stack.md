@@ -1,6 +1,6 @@
 # 06 — Search Stack
 
-Three layers: **SearXNG** finds pages, an **extraction ladder** turns them into readable text, and a small **MCP server** exposes the result to the agent as `web_search`, `web_fetch`, and `deep_research`. An optional remote summarizer sits on top and is never required.
+Four layers: **SearXNG and a set of structured APIs** find sources in parallel, **RRF** fuses them, an **extraction ladder** turns pages into readable text, and a small **MCP server** exposes the result as `web_search`, `web_fetch`, and `deep_research`. An optional **multi-provider inference pool** summarizes on top, and is never required.
 
 ---
 
