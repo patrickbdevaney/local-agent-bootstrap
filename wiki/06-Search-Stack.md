@@ -88,7 +88,7 @@ Same 8 Wikipedia articles, uncapped:
 | Resident memory | **50 MiB** | 543 MiB |
 | Artifact | 7.8 MB binary | 3.87 GB image |
 
-**~13× faster cold, ~37× warm, ~11× less memory — extracting *more* content, not less.** Per-page output is within ±20% of the browser on every URL tested.
+**~13× faster cold, ~37× warm, ~11× less memory — extracting *more* content overall, not less.** Per-page the two disagree by **-8.8% to +44.2%** (one page shorter, seven longer): they draw the boilerplate line differently. Spot-checked output is clean article text either way.
 
 A headless browser is the right tool for JS-rendered SPAs and little else. Making it the default path costs an order of magnitude on every page that did not need it. Full detail and API: [`extractor/README.md`](../extractor/README.md).
 

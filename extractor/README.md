@@ -19,7 +19,9 @@ Same 8 Wikipedia articles, same machine, uncapped output:
 | Startup | instant | container + browser boot |
 | Binary / image | **7.8 MB** | 3.87 GB |
 
-**~13× faster cold, ~37× warm, ~11× less memory — while extracting *more* content**, because readability keeps the article body that the browser extractor's fit-filter sometimes trims. Per-page output is within ±20% of crawl4ai on every URL tested, so fidelity is comparable rather than traded away.
+**~13× faster cold, ~37× warm, ~11× less memory — while extracting *more* content overall**, because readability keeps article body that the browser extractor's fit-filter sometimes trims.
+
+Per-page, output ranges from **-8.8% to +44.2%** against crawl4ai (one page shorter, seven longer). So this is not a like-for-like byte match — the two extractors disagree about what counts as boilerplate. Spot-checked output is clean article text in both cases; extractd is not winning on volume by keeping junk.
 
 The browser is still worth keeping for the pages that need it. It just should not be the default path.
 
