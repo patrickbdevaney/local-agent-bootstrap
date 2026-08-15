@@ -3,9 +3,13 @@
 #
 # Subcommands: up | down | status | code | logs | bench | test | help
 #
-# Deliberate scoping note: SearXNG and crawl4ai were already running on this box
-# as shared infrastructure from prior (hermes-max) work. These scripts VERIFY them
-# but never start, stop, or recreate them. `agent down` only stops llama-server.
+# `agent up` brings up the whole stack: llama-server plus the SearXNG and crawl4ai
+# containers, creating them if they do not exist yet. `agent down` tears it back down.
+#
+# By default `agent down` stops only the containers that `agent up` actually started
+# (tracked in run/started-*), so a box where those containers are shared with another
+# project does not get its services pulled out from under it. Set
+# AGENT_STOP_CONTAINERS=always to stop them unconditionally, or =never to leave them.
 
 set -uo pipefail
 
@@ -50,6 +54,109 @@ vram_used_mib() {
 
 container_running() {
   [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]
+}
+
+container_exists() {
+  docker inspect "$1" >/dev/null 2>&1
+}
+
+# Records which containers this tool started, so `agent down` can stop exactly
+# those and leave anything that was already running alone.
+started_marker() { printf '%s/started-%s' "$RUN_DIR" "$1"; }
+
+wait_http() {  # wait_http <url> <seconds>
+  local i
+  for i in $(seq 1 "$2"); do
+    curl -sf -m 3 "$1" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# SearXNG ships with JSON output disabled. Patch settings.yml in place and restart
+# if the running instance won't serve format=json.
+ensure_searxng_json() {
+  curl -sf -m 10 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1 && return 0
+
+  dim "  searxng: JSON output not enabled, patching settings.yml"
+  if ! docker exec "$SEARXNG_CONTAINER" sh -c '
+      f=/etc/searxng/settings.yml
+      [ -f "$f" ] || exit 1
+      grep -q "^\( *\)- json" "$f" && exit 0
+      # add json alongside the existing html entry under search.formats
+      if grep -q "^ *formats:" "$f"; then
+        sed -i "/^ *formats:/,/^[^ ]/ s/^\( *\)- html/\1- html\n\1- json/" "$f"
+      else
+        printf "\nsearch:\n  formats:\n    - html\n    - json\n" >> "$f"
+      fi
+      grep -q "^\( *\)- json" "$f"
+  ' 2>/dev/null; then
+    warn "could not patch searxng settings.yml automatically"
+    return 1
+  fi
+
+  docker restart "$SEARXNG_CONTAINER" >/dev/null 2>&1
+  wait_http "$SEARXNG_URL/search?q=ping&format=json" 45
+}
+
+# Bring one container up: create it if it does not exist, start it if stopped.
+# Returns 0 if it ends up running.
+ensure_container() {  # ensure_container <name> <health-url> <create-cmd...>
+  local name="$1" health="$2"; shift 2
+
+  if container_running "$name"; then
+    ok "$name already running"
+  elif container_exists "$name"; then
+    dim "  starting existing container $name"
+    docker start "$name" >/dev/null 2>&1 || { bad "failed to start $name"; return 1; }
+    : > "$(started_marker "$name")"
+    ok "$name started"
+  else
+    dim "  creating container $name"
+    "$@" >/dev/null 2>&1 || { bad "failed to create $name"; return 1; }
+    : > "$(started_marker "$name")"
+    ok "$name created"
+  fi
+
+  if [ -n "$health" ] && ! wait_http "$health" 60; then
+    warn "$name is running but did not answer $health within 60s"
+    return 1
+  fi
+  return 0
+}
+
+create_searxng() {
+  mkdir -p "$BOOTSTRAP_ROOT/searxng"
+  docker run -d --name "$SEARXNG_CONTAINER" --restart unless-stopped \
+    -p "127.0.0.1:$SEARXNG_PORT:8080" \
+    -v "$BOOTSTRAP_ROOT/searxng:/etc/searxng" \
+    "$SEARXNG_IMAGE"
+}
+
+create_crawl4ai() {
+  docker run -d --name "$CRAWL4AI_CONTAINER" --restart unless-stopped \
+    --shm-size=1g \
+    -p "127.0.0.1:$CRAWL4AI_PORT:11235" \
+    "$CRAWL4AI_IMAGE"
+}
+
+stop_container() {  # honours AGENT_STOP_CONTAINERS
+  local name="$1" marker; marker="$(started_marker "$name")"
+  case "$AGENT_STOP_CONTAINERS" in
+    never) dim "  leaving $name running (AGENT_STOP_CONTAINERS=never)"; return 0 ;;
+    started)
+      if [ ! -f "$marker" ]; then
+        dim "  leaving $name running (was already up before 'agent up')"
+        return 0
+      fi
+      ;;
+  esac
+  if container_running "$name"; then
+    docker stop "$name" >/dev/null 2>&1 && ok "$name stopped" || warn "failed to stop $name"
+  else
+    dim "  $name was not running"
+  fi
+  rm -f "$marker"
 }
 
 served_model_id() {
@@ -122,21 +229,20 @@ cmd_up() {
     fi
   fi
 
-  # Shared infra: verify only, never start.
-  if container_running "$SEARXNG_CONTAINER"; then
-    if curl -sf -m 10 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1; then
-      ok "searxng reachable at $SEARXNG_URL (pre-existing container, not managed here)"
-    else
-      warn "searxng container is up but JSON search did not respond"
+  # Docker services: create if missing, start if stopped, verify either way.
+  if ! command -v docker >/dev/null; then
+    warn "docker not found - web_search and web_fetch will be unavailable"
+  else
+    if ensure_container "$SEARXNG_CONTAINER" "" create_searxng; then
+      if ensure_searxng_json; then
+        ok "searxng ready at $SEARXNG_URL (JSON enabled)"
+      else
+        warn "searxng is up but JSON search is not responding - web_search will degrade"
+      fi
     fi
-  else
-    warn "searxng container '$SEARXNG_CONTAINER' is not running - web_search will degrade"
-  fi
-
-  if curl -sf -m 10 "$CRAWL4AI_URL/health" >/dev/null 2>&1; then
-    ok "crawl4ai reachable at $CRAWL4AI_URL (pre-existing container, not managed here)"
-  else
-    warn "crawl4ai not reachable at $CRAWL4AI_URL - web_fetch will degrade"
+    if ensure_container "$CRAWL4AI_CONTAINER" "$CRAWL4AI_URL/health" create_crawl4ai; then
+      ok "crawl4ai ready at $CRAWL4AI_URL"
+    fi
   fi
 
   cmd_status
@@ -178,7 +284,10 @@ cmd_down() {
   after=$(vram_used_mib)
   dim "  VRAM: ${before} MiB -> ${after} MiB (freed $(( ${before:-0} - ${after:-0} )) MiB)"
 
-  dim "  leaving shared containers running by design: $SEARXNG_CONTAINER, $CRAWL4AI_CONTAINER"
+  if command -v docker >/dev/null; then
+    stop_container "$CRAWL4AI_CONTAINER"
+    stop_container "$SEARXNG_CONTAINER"
+  fi
 }
 
 # ---------------------------------------------------------------- status
@@ -357,8 +466,8 @@ cmd_help() {
   cat <<EOF
 agent - local llama.cpp + OpenCode coding agent
 
-  agent up               start llama-server, verify shared services, print status
-  agent down             stop llama-server only (leaves searxng/crawl4ai running)
+  agent up               start llama-server + the docker services, print status
+  agent down             stop llama-server and the docker services
   agent status           show endpoints, model, VRAM, RAM, search mode
   agent code [path]      launch OpenCode against the local endpoint
   agent logs [-f|N]      tail the llama-server log

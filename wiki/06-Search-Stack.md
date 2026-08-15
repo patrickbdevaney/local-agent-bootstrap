@@ -120,6 +120,8 @@ The MCP stdio protocol is small enough to implement directly: `initialize`, `not
 
 **`web_fetch(url, max_chars)`** — single-URL readability extraction.
 
+**`deep_research(topic, breadth, depth)`** — a research cascade rather than a single query. It expands the topic into `breadth` distinct sub-queries, searches and extracts sources for each, summarizes the branches **concurrently**, then synthesizes one report with globally-numbered citations. Sources are deduplicated by URL across branches so nothing is extracted or summarized twice. Every stage degrades independently: if synthesis is unavailable you still get the per-branch findings; if summarization is unavailable you still get the extracted text; if extraction fails you still get snippets.
+
 ### Graceful degradation at every layer
 
 Nothing in this chain is allowed to fail hard:

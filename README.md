@@ -135,7 +135,7 @@ agent bench [--save]   measure decode tok/s; --save records this box's clean bas
 agent test             health + tool battery across every component
 ```
 
-`agent down` deliberately **never** touches the SearXNG or crawl4ai containers. On the validation box both predate this project and are shared with other work; stopping them would break something else. If you own those containers exclusively, that policy is one line in `bin/agent`.
+`agent up` creates the SearXNG and crawl4ai containers if they do not exist, starts them if stopped, and patches SearXNG to serve JSON. `agent down` stops them again. By default it stops only the containers `agent up` actually started, so a box where those services are shared with another project keeps them running; set `AGENT_STOP_CONTAINERS=always` to stop them unconditionally.
 
 ---
 
