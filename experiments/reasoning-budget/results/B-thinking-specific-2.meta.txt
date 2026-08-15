@@ -1,0 +1,11 @@
+variant=B-thinking-specific-2
+reasoning=true
+output_limit=32768
+elapsed_seconds=376
+agent_exit=0
+completions=8
+decode_tokens_total=32736
+largest_single_completion=32000
+checks_passed=5
+checks_failed=0
+verify_exit=0

@@ -6,17 +6,17 @@ Every place reality contradicted the plan. **If you read one page before the 27B
 
 ## 1. The reasoning runaway {#1-the-reasoning-runaway}
 
-**Severity: blocking. Cost the most time.**
+**Severity: high. Cost the most time.**
 
-Qwen3.5-4B is a reasoning model. With thinking enabled inside an agent harness, it does not stop.
-
-A trivial OpenCode task — add a two-line function and a test:
+Qwen3.5-4B is a reasoning model. With thinking enabled inside an agent harness, a trivial task — add a two-line function and a test — burned:
 
 ```
 slot print_timing: n_gen = 12936, tg = 82.34 t/s
 ```
 
-**12,936 tokens in a single completion. Zero tool calls. Zero file edits.** It never escaped its own reasoning loop. Throughput was fine (82 tok/s); the model simply never emitted an action.
+**12,936 tokens in a single completion**, which the operator then killed.
+
+> **Corrected by later measurement.** This was originally written up as a runaway that never escaped its reasoning loop. That was an overstatement — the run was *killed*, not stuck. A controlled 8-run experiment ([`experiments/reasoning-budget`](../experiments/reasoning-budget/README.md)) showed that thinking-on **does** complete the task correctly, every time. The failure is **cost, not correctness**: 16–83× the tokens and 7–32× the wall time for identical output.
 
 Even a one-line instruction consumed its budget thinking:
 
@@ -46,7 +46,12 @@ curl -s http://127.0.0.1:8090/props \
 
 Keep the harness in sync: `"reasoning": false` and **omit `interleaved`** in the OpenCode model config.
 
-> Test this on the 27B immediately. It costs one flag, and if it behaves the same way you will otherwise spend hours suspecting the harness, the template, or the quant.
+**Two things that do *not* work — both tested, not assumed** ([experiment](../experiments/reasoning-budget/README.md)):
+
+- **A more specific prompt makes it worse.** A four-step, exact-code, *"call a tool on your very first response, keep prose under two sentences"* prompt produced the **most expensive** result of any cell. More specificity gave the model more to reason about.
+- **A bigger output budget makes it strictly worse.** Raising the cap from 8,192 to 32,768 raised consumption to **32,702 tokens**, with almost no variance between runs — one completion expands to fill whatever ceiling you set. **Token spend under thinking is governed by the cap, not by the task.** If you must run with thinking on, cap output *tightly*.
+
+> Test this on the 27B immediately, and judge it on **cost, not correctness** — every thinking-on run completed. It costs one flag, and if it behaves the same way you will otherwise spend hours suspecting the harness, the template, or the quant.
 
 ---
 

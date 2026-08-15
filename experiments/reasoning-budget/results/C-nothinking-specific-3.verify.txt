@@ -1,0 +1,5 @@
+  PASS  multiply defined in mathutil.py
+  PASS  add still defined
+  PASS  test_multiply exists
+  PASS  multiply imported in test
+  PASS  pytest reports 2 passed

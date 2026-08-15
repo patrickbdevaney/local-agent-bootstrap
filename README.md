@@ -21,6 +21,7 @@ This repository is **not a plan**. Every command, flag, config file, and number 
 | **Tool-call battery** | **10/10**, zero malformed, zero looping, 26–45 tokens/call |
 | **End-to-end coding task** | 3 correct edits, `pytest` green, exit 0 |
 | **Agentic project suite** | **5/5 projects, 38/38 checks**, 275 s total |
+| **Thinking on vs off** | same task, **395 vs 6,458–32,702 tokens** (16–83×) |
 | **Cold start** | `agent up` → live in ~8 s |
 | **Shutdown** | `agent down` → VRAM back to 11 MiB idle, no leak |
 
@@ -144,7 +145,7 @@ The eleven findings below cost real time to discover. They are the reason this r
 
 | # | Finding | Impact |
 |---|---|---|
-| 1 | **A reasoning model runs away inside an agent harness.** Thinking on, a trivial task generated **12,936 tokens in one completion with zero tool calls**. `--reasoning off` fixed it outright. | Blocking. [→](wiki/10-Gotchas-and-Deviations.md#1-the-reasoning-runaway) |
+| 1 | **A reasoning model burns 16–83× the tokens inside an agent harness.** Thinking on, a trivial task cost 6,458–32,702 tokens vs **395** with `--reasoning off`. Neither a more specific prompt nor a bigger budget helps — the bigger budget makes it worse. | Biggest cost sink. [→](wiki/10-Gotchas-and-Deviations.md#1-the-reasoning-runaway) |
 | 2 | `--np 1` is **not a valid flag**. It is `-np` / `--parallel`. | Hard startup failure. [→](wiki/10-Gotchas-and-Deviations.md#2-flag-drift) |
 | 3 | **MTP needs recent llama.cpp.** A 5-month-old build offered no `draft-mtp`. Current master does. | Worth 1.45× decode. [→](wiki/02-llama-cpp-Build.md) |
 | 4 | **The GDN confirmation line is hidden at default verbosity** and was renamed to `resolve_fused_ops:`. You need `-lv 5`. | You'd wrongly conclude GDN is off. [→](wiki/10-Gotchas-and-Deviations.md#4-the-gdn-line-moved-and-hid) |
@@ -165,7 +166,8 @@ The eleven findings below cost real time to discover. They are the reason this r
 | [`INSTALL_LOG.md`](INSTALL_LOG.md) | The raw chronological install log — every command, output, and deviation, as it happened |
 | [`docs/AGENT_RUNS.md`](docs/AGENT_RUNS.md) | Five agentic engineering projects run against this stack, with results and analysis |
 | [`projects/`](projects/) | Those projects — seeds, prompts, verification scripts, and the run harness |
-| [`wiki/`](wiki/) | Structured reference, one page per subsystem — start at [`wiki/Home.md`](wiki/Home.md) |
+| [`experiments/reasoning-budget/`](experiments/reasoning-budget/README.md) | Controlled 8-run test of whether prompt specificity or a bigger token budget can replace `--reasoning off` (they can't) |
+| [`wiki/`](wiki/) | Structured reference, one page per subsystem — start at [`wiki/README.md`](wiki/README.md) |
 | [`wiki/11-Porting-to-27B.md`](wiki/11-Porting-to-27B.md) | **The sizing method and worked numbers for the 27B Windows/WSL2 target** |
 
 ---
@@ -193,6 +195,7 @@ bin/toolcall-battery.py   10-case tool-calling validation
 config/opencode.json      working OpenCode V2 provider + MCP config
 mcp/search-server.mjs     dependency-free MCP server (web_search, web_fetch)
 projects/                 agentic engineering projects run against the stack
+experiments/              controlled experiments (reasoning cost vs prompt/budget)
 docs/AGENT_RUNS.md        results of those runs
 wiki/                     structured reference documentation
 INSTALL_LOG.md            raw install log

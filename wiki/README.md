@@ -1,4 +1,6 @@
-# local-agent-bootstrap — Wiki
+# Wiki
+
+A plain markdown documentation directory — read it here on GitHub, in your editor, or with any static-site generator. Nothing in it depends on GitHub's wiki feature.
 
 Structured reference for a **validated** local coding-agent stack: OpenCode → llama.cpp → Qwen3.5-4B (gated-delta hybrid GGUF), with SearXNG + crawl4ai exposed over MCP.
 
@@ -39,6 +41,7 @@ This is the **dry run**. The real target is Qwen3.8-27B on an RTX 5090 (32 GB) u
 | Page | Contents |
 |---|---|
 | [09 — Validation Results](09-Validation-Results.md) | Benchmarks, tool-call battery, end-to-end task, failure-path tests. |
+| [`experiments/reasoning-budget`](../experiments/reasoning-budget/README.md) | Controlled 8-run test: can prompt specificity or a bigger token budget replace `--reasoning off`? (No — and the bigger budget makes it worse.) |
 | [11 — Porting to 27B](11-Porting-to-27B.md) | **The handoff.** Sizing method, worked 32 GB budget, WSL2 specifics, checklist. |
 
 ---
@@ -48,5 +51,5 @@ This is the **dry run**. The real target is Qwen3.8-27B on an RTX 5090 (32 GB) u
 1. **Inventory before you install.** An existing container replaced an entire planned build phase.
 2. **Check `--spec-type` before anything else.** It tells you if your llama.cpp is current enough for MTP, which is worth 1.45× decode.
 3. **Only full-attention layers cost KV** in a hybrid model. The recurrent state is flat in context length.
-4. **Turn thinking off** for agent work at small scale. It was the difference between a 12,936-token runaway and a green test suite.
+4. **Turn thinking off** for agent work at small scale. Measured across 8 runs: 395 tokens with it off versus 6,458–32,702 with it on, for identical correct output. Prompt specificity doesn't help and a bigger budget hurts.
 5. **Make failure silent and local.** Every remote dependency in this stack degrades to a working local-only path, and all three failure modes were tested.

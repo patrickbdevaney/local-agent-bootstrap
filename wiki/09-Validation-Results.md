@@ -1,6 +1,6 @@
 # 09 — Validation Results
 
-All figures measured 2026-08-14 on the box described in [Home](Home.md). Nothing here is estimated.
+All figures measured 2026-08-14 on the box described in the [wiki index](README.md). Nothing here is estimated.
 
 ---
 
@@ -121,7 +121,7 @@ tool-call battery: 10/10 passed
 
 **Zero malformed, zero looping.** 26–45 tokens per call — no preamble, no commentary, correct optional-argument handling (`unit` supplied only when the prompt implied it).
 
-> These numbers are with `--reasoning off`. With thinking on the model does not reliably emit tool calls at all.
+> These numbers are with `--reasoning off`. With thinking on the model still emits valid tool calls, but spends 16–83× the tokens reaching the same result — see [`experiments/reasoning-budget`](../experiments/reasoning-budget/README.md).
 
 ---
 

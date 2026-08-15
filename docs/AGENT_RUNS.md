@@ -45,7 +45,7 @@ Two things worth reading carefully:
 
 **Decode during agent work (56.4) is below the bench baseline (78.6).** That is expected and not a regression. `agent bench` measures one 160-token generation, where MTP's draft pipeline stays saturated. An agent loop is dominated by *many short* completions — tool calls of 20–40 tokens — where per-request overhead and speculative warmup have less to amortise against. **Quote the bench number as a ceiling, not as what you'll see in a session.**
 
-**3,134 tokens for five completed projects** is the number to hold next to the reasoning-runaway result: with thinking enabled, a *single* trivial task burned **12,936 tokens and produced nothing** ([gotcha #1](../wiki/10-Gotchas-and-Deviations.md#1-the-reasoning-runaway)). Turning thinking off didn't just make it correct — it made it roughly **20× more token-efficient** at the task level.
+**3,134 tokens for five completed projects** is the number to hold next to the thinking-mode measurements: a *single* trivial task costs 6,458–32,702 tokens with thinking on, versus 395 with it off — for identical, correct output ([experiment](../experiments/reasoning-budget/README.md), [gotcha #1](../wiki/10-Gotchas-and-Deviations.md#1-the-reasoning-runaway)). Turning thinking off is worth **16–83×** at the task level.
 
 ---
 

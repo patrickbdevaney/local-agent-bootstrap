@@ -1,0 +1,11 @@
+variant=C-nothinking-specific-1
+reasoning=false
+output_limit=8192
+elapsed_seconds=15
+agent_exit=0
+completions=7
+decode_tokens_total=388
+largest_single_completion=109
+checks_passed=5
+checks_failed=0
+verify_exit=0

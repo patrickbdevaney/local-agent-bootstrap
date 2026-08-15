@@ -90,7 +90,7 @@ Mitigated by binding to `127.0.0.1`. **Never bind this to `0.0.0.0` without addi
 
 ## The reasoning flag — the biggest single gotcha
 
-Qwen3.5-4B is a reasoning model. Inside an agent harness with thinking enabled, it **does not stop**.
+Qwen3.5-4B is a reasoning model. Inside an agent harness with thinking enabled, it produces correct results at **16–83× the token cost**.
 
 **With thinking on**, a trivial OpenCode task ("add a `multiply` function and a test"):
 
@@ -98,7 +98,7 @@ Qwen3.5-4B is a reasoning model. Inside an agent harness with thinking enabled, 
 slot print_timing: n_gen = 12936, tg = 82.34 t/s
 ```
 
-**12,936 tokens in a single completion, zero tool calls, zero file edits**, before being killed. It never escaped its own reasoning loop.
+**12,936 tokens in a single completion**, before being killed by the operator. (A later controlled experiment showed it *does* eventually finish — the problem is that it costs 16–83× more tokens than necessary. See [`experiments/reasoning-budget`](../experiments/reasoning-budget/README.md).)
 
 Even a one-line request burned its whole budget thinking:
 
@@ -124,7 +124,7 @@ print('enable_thinking:', ct.count('enable_thinking'))"
 
 Related flags: `--reasoning-effort LEVEL` (if the template reads it — this one does not), `--reasoning-format deepseek` (routes thoughts to `message.reasoning_content` instead of inline `<think>` tags).
 
-> **Check this before blaming the harness, the chat template, or the quant.** Whether a 27B needs the same treatment is untested — but it costs one flag to find out, so test it early.
+> **Check this before blaming the harness, the chat template, or the quant.** Neither a more specific prompt nor a larger output budget fixes it — both were tested, and the larger budget made it strictly worse. Whether a 27B reasons more efficiently is untested; it costs one flag to find out, so test it early.
 
 ---
 

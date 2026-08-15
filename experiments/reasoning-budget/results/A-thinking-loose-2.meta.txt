@@ -1,0 +1,11 @@
+variant=A-thinking-loose-2
+reasoning=true
+output_limit=8192
+elapsed_seconds=95
+agent_exit=0
+completions=5
+decode_tokens_total=8705
+largest_single_completion=8192
+checks_passed=5
+checks_failed=0
+verify_exit=0

@@ -254,11 +254,11 @@ Nothing else needs to change. `mcp/search-server.mjs` is model-agnostic.
 
 Stated plainly so they aren't mistaken for settled:
 
-1. **Does the 27B also run away with thinking on?** Untested. It may handle reasoning far better at scale — or not. One flag to find out.
+1. **Does the 27B reason more efficiently?** At 4B, thinking-on cost 16–83× the tokens for *identical* output on an easy task, and neither a tighter prompt nor a bigger budget helped ([experiment](../experiments/reasoning-budget/README.md)). A 27B may reason far more efficiently, and on genuinely hard tasks the extra tokens might buy something real — this was only measured on a task that is trivially easy, which is the case least favourable to thinking. `experiments/reasoning-budget/run.sh` ports as-is. Judge on **cost**, not correctness: every thinking-on run completed.
 2. **Does MTP still pay at 27B?** The draft context scales with model size — likely 2–4 GB. At 32 GB that is affordable; the open question is whether the 0.71 draft-acceptance rate and 1.45× speedup hold at 27B, or whether a larger target model makes the small draft head less useful.
 3. **Is a 27B good enough for large refactors?** The 4B handled small, well-specified tasks correctly ([09](09-Validation-Results.md), [`docs/AGENT_RUNS.md`](../docs/AGENT_RUNS.md)) and was never evaluated beyond that. **This run validates the plumbing, not the model's ceiling.**
 4. **Windows desktop VRAM tax.** The validation box had effectively none. Measure it early — it comes straight out of your context budget.
 
 ---
 
-**Back to:** [Home](Home.md)
+**Back to:** [wiki index](README.md)
