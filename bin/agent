@@ -403,6 +403,15 @@ cmd_status() {
   dim "    VRAM: ${used} / ${total} MiB"
   dim "    RAM:  $(free -h | awk '/^Mem:/ {print $3" used, "$7" available"}')"
 
+  # Prefix-cache health: a 21k prompt costs ~11.6s cold and ~0.8s warm here, so
+  # the warm ratio is the most actionable single number in a long session.
+  if [ -f "$LLAMA_LOG" ]; then
+    local cache_line
+    cache_line=$(python3 "$BOOTSTRAP_ROOT/bin/cache-stats.py" --log "$LLAMA_LOG" --last 50 2>/dev/null \
+      | awk '/^warm turns/ {w=$0} /^reprocessed tokens/ {r=$4} END {if (w) printf "%s, median %s tok reprocessed", w, r}')
+    [ -n "$cache_line" ] && dim "    cache: ${cache_line}"
+  fi
+
   base=$(cat "$BASELINE_FILE" 2>/dev/null)
   mode=$(effective_mode)
   if [ -n "$base" ]; then
@@ -489,6 +498,11 @@ cmd_code() {
   exec opencode "$@"
 }
 
+cmd_cache() {
+  head_ "agent cache"
+  python3 "$BOOTSTRAP_ROOT/bin/cache-stats.py" --log "$LLAMA_LOG" "$@"
+}
+
 cmd_logs() {
   if [ "${1:-}" = "-f" ]; then
     tail -f "$LLAMA_LOG"
@@ -561,6 +575,7 @@ agent - local llama.cpp + OpenCode coding agent
   agent down             stop llama-server and the docker services
   agent status           show endpoints, model, VRAM, RAM, search mode
   agent code [path]      launch OpenCode against the local endpoint
+  agent cache [--cold]   prefix-cache hit rate and the turns that broke it
   agent logs [-f|N]      tail the llama-server log
   agent bench [--save]   measure decode tok/s; --save records the clean baseline
   agent test             run the health/tool battery
@@ -575,6 +590,7 @@ case "${1:-help}" in
   down)   shift; cmd_down "$@" ;;
   status) shift; cmd_status "$@" ;;
   code)   shift; cmd_code "$@" ;;
+  cache)  shift; cmd_cache "$@" ;;
   logs)   shift; cmd_logs "$@" ;;
   bench)  shift; cmd_bench "$@" ;;
   test)   shift; cmd_test "$@" ;;

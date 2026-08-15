@@ -22,8 +22,12 @@
             "output": 8192
           },
           "modalities": {
-            "input": ["text"],
-            "output": ["text"]
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
           },
           "cost": {
             "input": 0,
@@ -39,11 +43,21 @@
     "local-search": {
       "type": "local",
       "command": [
-        "node",
+        "/home/patrickd/.nvm/versions/node/v22.18.0/bin/node",
         "/home/patrickd/local-agent-bootstrap/mcp/search-server.mjs"
       ],
       "enabled": true,
       "timeout": 180000
     }
+  },
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "bash": "allow",
+    "todowrite": "allow",
+    "webfetch": "allow"
   }
 }
