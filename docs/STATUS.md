@@ -27,57 +27,47 @@ The augmentation programme ([`RESEARCH_FINDINGS.md`](RESEARCH_FINDINGS.md) → [
 | 1.1 Tool-count headroom measured | ✅ **done** — 100% at 150 tools, no cliff |
 | 1.2 Prefix-cache behaviour measured | ✅ **done** — 14–49× on prefill |
 | 1.3 Cache instrumentation (`agent cache`) | ✅ **done** — shipped and working |
-| 1.4 Prefix-stability audit of a real OpenCode session | ⚠️ **blocked** — OpenCode hangs on tool-using tasks, see below. Partial data obtained by other means. |
+| 1.4 Prefix-stability audit of a real OpenCode session | ✅ **done** — prefix is stable within a session; cold cost is per-session-start |
 | 1.5 Verification gate MCP | ⬜ not started |
 | 1.6 Eval harness expansion | ⬜ not started |
 | Tier 2 / Tier 3 | ⬜ not started |
 
-### What 1.4 was trying to establish
+### 1.4 result — OpenCode keeps its prefix stable within a session
 
-Whether a real OpenCode session keeps its prompt prefix stable, and what breaks it. This matters because prefill is **11.6 s cold versus 0.8 s warm** at 21k tokens on this box — so anything that rewrites the prefix mid-session costs ~11 s per turn, invisibly.
+Measured across real `opencode run` sessions:
 
-Published reports say OpenCode's agent switching (Plan → Build) rewrites the system prompt and forces a full reprocess, with no flag-based workaround. **That remains unverified here.**
+| | |
+|---|---|
+| Requests analysed | 5 |
+| Warm turns (<500 tok reprocessed) | **3/5**, median **78 tokens** |
+| Prefix similarity | median **0.995**, p10 0.990 |
+| Cold turns | 2/5 — **both at session start** (530 and 7,431 tokens, 4.8 s total) |
 
-Partial results already in hand, from instrumenting other work:
+**Within a session the prefix holds** — a mid-session turn reprocesses ~78 tokens against a 7,700-token context. The cold cost is **per-session-start**: each `opencode run` invocation pays ~7.4k tokens / 3.9 s to prime the cache, which is unavoidable and cheap relative to the work.
 
-- Over 108 requests: **91% of turns were warm** (median 23 tokens reprocessed), but the **9% cold turns consumed 29 of the 53 total seconds of prefill** — over half the prefill cost in under a tenth of the turns.
-- The cold turns were traced to **changing the tool list mid-session** (the tool-count sweep), which reprocessed up to 8,845 tokens per change. That confirms the mechanism on this stack, just not yet via OpenCode's own behaviour.
+The published concern — that switching agents (Plan → Build) rewrites the system prompt and forces a full reprocess — **did not manifest** in the single-agent `run` flow. It remains plausible for the interactive TUI with agent switching, and is worth re-checking there.
 
-`agent cache --cold` lists the offending turns with timestamps, similarity and token counts. **The instrument is finished; only the OpenCode-specific run is missing.**
+Contrast with what *does* break the prefix, measured earlier: **changing the tool list mid-session** reprocessed up to 8,845 tokens per change. Keep the tool set stable within a session.
+
+Use `agent cache --cold` to watch this on any box.
 
 ---
 
-## The open bug: OpenCode hangs at `init`
+## Correction: the "OpenCode hangs at init" bug was a misdiagnosis
 
-**Symptom.** `opencode run` prints its startup lines, logs `message=init`, and then hangs indefinitely. No request ever reaches llama-server (`agent cache` shows no new events). The process sits in `do_wait` on a child that is not running.
+Recorded because the reasoning failure is worth more than the conclusion.
 
-**It is not:** llama-server (healthy throughout), the MCP server (0.2 s handshake standalone, and the hang reproduces with MCP disabled), disk, or RAM.
+**What I believed:** `opencode run` hung at `init` on tool-using tasks, no requests reaching llama-server, and the cause was a wedged SQLite WAL.
 
-**The discriminator.** `opencode run "Reply with exactly: PING"` **succeeds**. The same command with a task requiring the edit/bash tools **hangs**. That is the sharpest clue available: it is not startup in general, it is something on the tool-using path.
+**What was actually happening:** OpenCode was working the whole time. Requests *were* reaching the server. The completion count only looked frozen because I compared against a **stale log mark** captured before an earlier run had already advanced the log — so my "no requests reached the server" observation was an artefact of bad arithmetic, not an observation.
 
-**Things ruled out by test, not by assumption:**
+The real behaviour: a two-file task simply takes more turns than my timeout allowed, while a one-file task finishes in ~25 s. Nothing was hanging.
 
-| Hypothesis | Test | Result |
-|---|---|---|
-| llama-server down | `/health`, pid check | healthy throughout |
-| MCP server broken | standalone handshake; then MCP disabled entirely | 0.2 s handshake; **hang reproduces with MCP off** |
-| `node` not on PATH for the MCP subprocess | switched config to an absolute node path | no change (kept anyway — it is correct) |
-| Wedged SQLite WAL | `pragma wal_checkpoint(TRUNCATE)` | PING started working — **but this was misleading** |
-| Corrupt database | `pragma integrity_check` | `ok` |
-| Stale DB state | **moved `opencode.db*` aside entirely, fresh DB** | **still hangs** |
-| Permission prompt with no TTY | added explicit `permission: {read/edit/bash/... : "allow"}` to the config | **still hangs** |
-| Disk / RAM | `df`, `free` | 119 GB free, 21 GB available |
+**Everything downstream of that bad measurement was wasted:** the WAL checkpointing, moving the database aside, adding an explicit permission block, disabling MCP, testing the working directory. Each "still hangs" result was really "still not finished inside my timeout."
 
-So the WAL was **not** the root cause. Checkpointing appeared to fix it only because the follow-up test was `PING`, which does not touch tools.
+**The lesson:** when a measurement says a component received *nothing*, verify the measurement before theorising about the component. One `grep -c` against the live log would have ended it in seconds — and `strace`, which I kept naming as the right next step, was never actually needed.
 
-**Still untried, in order:**
-
-1. `strace -f -e trace=wait4,clone,execve,openat` on the hung process — identify the child it waits on. This is the fastest path to an answer and should have been step one.
-2. Working-directory dependence: every hang was under the scratchpad (`/tmp/claude-.../oc-audit`); every success earlier in the session was under `projects/work/`. **Test the identical task in a normal repo path.** OpenCode snapshots the working directory (`~/.local/share/opencode/snapshot/`, 21 dirs accumulated) and a snapshot of a `/tmp` path is a plausible thing to block on.
-3. `opencode run --print-logs --log-level DEBUG` for anything past `message=init`.
-4. Bisect by reverting `~/.config/opencode/opencode.json` to the version that demonstrably worked during the agentic project suite.
-
-**A contributing self-inflicted factor.** Several process kills came from `pkill -f` patterns that also matched the shell running them — **three separate times**. Use `pgrep -x <name>` and kill by PID; never `pkill -f` on a string that appears in your own command line. Documented in [`wiki/10-Gotchas-and-Deviations.md`](../wiki/10-Gotchas-and-Deviations.md).
+The permission block and the absolute `node` path were kept — both are correct hardening regardless.
 
 ---
 
