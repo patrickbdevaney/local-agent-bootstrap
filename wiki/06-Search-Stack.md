@@ -1,6 +1,6 @@
 # 06 — Search Stack
 
-Three layers: **SearXNG** finds pages, **crawl4ai** turns them into readable text, and a small **MCP server** exposes both to the agent as `web_search` and `web_fetch`. An optional remote summarizer sits on top and is never required.
+Three layers: **SearXNG** finds pages, an **extraction ladder** turns them into readable text, and a small **MCP server** exposes the result to the agent as `web_search`, `web_fetch`, and `deep_research`. An optional remote summarizer sits on top and is never required.
 
 ---
 
@@ -68,9 +68,33 @@ async function searxSearch(query, count) {
 
 ---
 
-## crawl4ai
+## The extraction ladder
 
-Handles fetch + readability extraction. Replaced a planned Rust `spider` + `article_scraper` binary entirely.
+Extraction is a **ladder**, not a single backend. Rung 1 handles the common case cheaply; rung 2 exists for the pages that genuinely need a browser.
+
+| Rung | What | When it runs |
+|---|---|---|
+| 1 | **extractd** — native Rust, `reqwest` + `dom_smoothie` + `htmd` | always first |
+| 2 | **crawl4ai** — headless Chromium | only when rung 1 reports it could not render the page |
+
+### Why the ladder, measured
+
+Same 8 Wikipedia articles, uncapped:
+
+| | extractd | crawl4ai |
+|---|---|---|
+| Wall clock, 8 URLs | **0.52 s** warm / 1.51 s cold | **19.43 s** |
+| Content extracted | **876,656 chars** | 785,212 chars |
+| Resident memory | **50 MiB** | 543 MiB |
+| Artifact | 7.8 MB binary | 3.87 GB image |
+
+**~13× faster cold, ~37× warm, ~11× less memory — extracting *more* content, not less.** Per-page output is within ±20% of the browser on every URL tested.
+
+A headless browser is the right tool for JS-rendered SPAs and little else. Making it the default path costs an order of magnitude on every page that did not need it. Full detail and API: [`extractor/README.md`](../extractor/README.md).
+
+`extractAll()` sends the whole result list to `extractd`'s `/extract_batch` in one call — it bounds its own concurrency internally — then retries **only the URLs it could not render** on the browser rung. Results are positionally aligned, so misses map back to their URLs exactly.
+
+### crawl4ai — the browser rung
 
 ```bash
 docker run -d --name crawl4ai -p 11235:11235 unclecode/crawl4ai:latest
@@ -95,9 +119,9 @@ curl -s -X POST http://localhost:11235/md \
  "success":true}
 ```
 
-`f: "fit"` applies content-fit filtering — the readability pass that strips nav, ads, and boilerplate. Verified against a real Wikipedia article: **11,668 chars of clean markdown**, no chrome.
+`f: "fit"` applies content-fit filtering — the readability pass that strips nav, ads, and boilerplate.
 
-Other endpoints (`/crawl`, `/html`, `/screenshot`, `/pdf`, `/execute_js`, `/llm/{url}`) exist; `/md` is all this stack needs.
+Other endpoints (`/crawl`, `/html`, `/screenshot`, `/pdf`, `/execute_js`, `/llm/{url}`) exist; `/md` is all this rung needs. Keep the container: it is the fallback that makes rung 1 safe to prefer.
 
 ---
 
@@ -130,8 +154,9 @@ Nothing in this chain is allowed to fail hard:
 |---|---|
 | SearXNG unreachable | Returns `"Search backend unavailable"` as text, `isError: false` |
 | SearXNG empty | Retries once, then returns snippets or a clear no-results message |
+| extractd cannot render a page | That URL falls through to the browser rung |
 | crawl4ai fails on one URL | That result is dropped; others proceed |
-| crawl4ai fails on all | Falls back to titles + snippets |
+| Both rungs fail on all | Falls back to titles + snippets |
 | Summarizer unavailable | Section omitted entirely; extracted content still returned |
 | Tool throws | Returned as `isError: true` **content**, not a JSON-RPC protocol error, so the model can recover |
 

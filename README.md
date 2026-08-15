@@ -44,16 +44,18 @@ Full transcripts: [`INSTALL_LOG.md`](INSTALL_LOG.md) (install) and [`docs/AGENT_
                                 │               │
         ┌───────────────────────▼──┐   ┌────────▼─────────────────────┐
         │  llama-server :8090      │   │  mcp/search-server.mjs       │
-        │  Qwen3.5-4B UD-Q5_K_XL   │   │  web_search  ·  web_fetch    │
-        │  -c 131072  ·  fa on     │   └────┬──────────────────┬──────┘
-        │  KV q8_0  ·  MTP draft   │        │                  │
-        │  GDN fused kernels       │   ┌────▼──────┐   ┌───────▼────────┐
-        └──────────┬───────────────┘   │ SearXNG   │   │ crawl4ai       │
-                   │                   │ :8080     │   │ :11235  POST/md│
-             ┌─────▼──────┐            │ (docker)  │   │ (docker)       │
-             │ RTX 4060   │            └───────────┘   └────────────────┘
-             │ 8 GB CUDA  │                  │                 │
-             └────────────┘            search results     readable text
+        │  Qwen3.5-4B UD-Q5_K_XL   │   │  web_search · web_fetch      │
+        │  -c 131072  ·  fa on     │   │  deep_research               │
+        │  KV q8_0  ·  MTP draft   │   └────┬──────────────────┬──────┘
+        │  GDN fused kernels       │        │                  │
+        └──────────┬───────────────┘   ┌────▼──────┐   ┌───────▼────────┐
+                   │                   │ SearXNG   │   │ extractd :11236│
+             ┌─────▼──────┐            │ :8080     │   │ (rust, native) │
+             │ RTX 4060   │            │ (docker)  │   │   ↓ fallback   │
+             │ 8 GB CUDA  │            └───────────┘   │ crawl4ai :11235│
+             └────────────┘                            └────────────────┘
+                                              │                 │
+                                        search results     readable text
                                               └────────┬────────┘
                                                        │  optional, never required
                                               ┌────────▼─────────┐
@@ -155,7 +157,8 @@ The eleven findings below cost real time to discover. They are the reason this r
 | 8 | **SearXNG returns HTTP 200 with an empty array** when upstream engines are throttled. | Reads as a bug in your client. It isn't. [→](wiki/06-Search-Stack.md#the-empty-200) |
 | 9 | **OpenCode uses the V2 config schema.** Definitions are literally named `ConfigV2.*`. | Copy the working file. [→](wiki/07-OpenCode-Configuration.md) |
 | 10 | **Port 8080 collides** — llama-server's documented default is often already taken. | Used 8090. [→](wiki/10-Gotchas-and-Deviations.md#10-port-collisions) |
-| 11 | **Inventory first beat building twice.** An existing crawl4ai container replaced an entire planned Rust scraper phase. | Saved a whole phase. [→](wiki/01-Inventory-First.md) |
+| 11 | **Inventory first beat building twice.** An existing container stood the search stack up in minutes. | Saved a whole phase. [→](wiki/01-Inventory-First.md) |
+| 12 | **A headless browser is the wrong default for extraction.** A 7.8 MB Rust service is **~13–37× faster and ~11× lighter** than headless Chromium while extracting *more* content. Keep the browser as a fallback rung, not the front door. | [→](extractor/README.md) |
 
 ---
 
@@ -193,7 +196,8 @@ agent.env                 every tunable, sourced by bin/agent
 bin/agent                 the CLI
 bin/toolcall-battery.py   10-case tool-calling validation
 config/opencode.json      working OpenCode V2 provider + MCP config
-mcp/search-server.mjs     dependency-free MCP server (web_search, web_fetch)
+extractor/                extractd - native Rust extraction service (rung 1)
+mcp/search-server.mjs     dependency-free MCP server (web_search, web_fetch, deep_research)
 projects/                 agentic engineering projects run against the stack
 experiments/              controlled experiments (reasoning cost vs prompt/budget)
 docs/AGENT_RUNS.md        results of those runs

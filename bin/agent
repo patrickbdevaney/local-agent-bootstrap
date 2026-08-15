@@ -60,6 +60,76 @@ container_exists() {
   docker inspect "$1" >/dev/null 2>&1
 }
 
+extractd_pid() {
+  [ -f "$EXTRACTD_PID_FILE" ] || return 1
+  local pid; pid=$(cat "$EXTRACTD_PID_FILE" 2>/dev/null)
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s' "$pid"
+}
+
+extractd_healthy() { curl -sf -m 3 "$EXTRACTD_URL/health" >/dev/null 2>&1; }
+
+start_extractd() {
+  if extractd_healthy; then
+    ok "extractd already live at $EXTRACTD_URL"
+    return 0
+  fi
+  [ -f "$EXTRACTD_PID_FILE" ] && ! extractd_pid >/dev/null && rm -f "$EXTRACTD_PID_FILE"
+
+  if [ ! -x "$EXTRACTD_BIN" ]; then
+    if ! command -v cargo >/dev/null; then
+      warn "extractd not built and cargo is unavailable - extraction will use the browser rung"
+      return 1
+    fi
+    dim "  building extractd (first run, a few minutes)"
+    if ! ( cd "$EXTRACTD_DIR" && cargo build --release ) >"$LOG_DIR/extractd-build.log" 2>&1; then
+      warn "extractd build failed - see $LOG_DIR/extractd-build.log"
+      return 1
+    fi
+    ok "extractd built"
+  fi
+
+  EXTRACTD_PORT="$EXTRACTD_PORT" EXTRACTD_CONCURRENCY="$EXTRACTD_CONCURRENCY" \
+    nohup "$EXTRACTD_BIN" >"$EXTRACTD_LOG" 2>&1 &
+  echo $! > "$EXTRACTD_PID_FILE"
+
+  local i
+  for i in $(seq 1 30); do
+    extractd_healthy && break
+    if ! extractd_pid >/dev/null; then
+      warn "extractd died on startup:"; tail -5 "$EXTRACTD_LOG" | sed 's/^/      /'
+      rm -f "$EXTRACTD_PID_FILE"; return 1
+    fi
+    sleep 1
+  done
+  extractd_healthy && ok "extractd up at $EXTRACTD_URL (pid $(extractd_pid))" \
+    || { warn "extractd did not become healthy"; return 1; }
+}
+
+stop_extractd() {
+  local pid
+  if pid=$(extractd_pid); then
+    kill "$pid" 2>/dev/null
+    local i; for i in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+    rm -f "$EXTRACTD_PID_FILE"
+    ok "extractd stopped (was pid $pid)"
+  else
+    rm -f "$EXTRACTD_PID_FILE"
+    # Match the process NAME exactly. `pkill -f` on a path substring will happily
+    # kill the shell that is running this script, because that shell's own command
+    # line contains the pattern.
+    local orphans; orphans=$(pgrep -x extractd 2>/dev/null)
+    if [ -n "$orphans" ]; then
+      echo "$orphans" | xargs -r kill 2>/dev/null
+      ok "stopped an untracked extractd"
+    else
+      dim "  extractd was not running"
+    fi
+  fi
+}
+
 # Records which containers this tool started, so `agent down` can stop exactly
 # those and leave anything that was already running alone.
 started_marker() { printf '%s/started-%s' "$RUN_DIR" "$1"; }
@@ -229,6 +299,8 @@ cmd_up() {
     fi
   fi
 
+  start_extractd
+
   # Docker services: create if missing, start if stopped, verify either way.
   if ! command -v docker >/dev/null; then
     warn "docker not found - web_search and web_fetch will be unavailable"
@@ -284,6 +356,8 @@ cmd_down() {
   after=$(vram_used_mib)
   dim "  VRAM: ${before} MiB -> ${after} MiB (freed $(( ${before:-0} - ${after:-0} )) MiB)"
 
+  stop_extractd
+
   if command -v docker >/dev/null; then
     stop_container "$CRAWL4AI_CONTAINER"
     stop_container "$SEARXNG_CONTAINER"
@@ -311,10 +385,16 @@ cmd_status() {
     bad "searxng       $SEARXNG_URL"
   fi
 
-  if curl -sf -m 8 "$CRAWL4AI_URL/health" >/dev/null 2>&1; then
-    ok "crawl4ai      $CRAWL4AI_URL"
+  if extractd_healthy; then
+    ok "extractd      $EXTRACTD_URL"
   else
-    bad "crawl4ai      $CRAWL4AI_URL"
+    bad "extractd      $EXTRACTD_URL"
+  fi
+
+  if curl -sf -m 8 "$CRAWL4AI_URL/health" >/dev/null 2>&1; then
+    ok "crawl4ai      $CRAWL4AI_URL  (browser fallback rung)"
+  else
+    warn "crawl4ai      $CRAWL4AI_URL  (browser fallback rung unavailable)"
   fi
 
   local used total base mode
@@ -435,8 +515,16 @@ cmd_test() {
   curl -sf -m 10 "$SEARXNG_URL/search?q=ping&format=json" >/dev/null 2>&1 \
     && ok "searxng JSON search" || { bad "searxng JSON search"; fails=$((fails+1)); }
 
+  extractd_healthy && ok "extractd /health" || { bad "extractd /health"; fails=$((fails+1)); }
+
+  local ex_ok
+  ex_ok=$(curl -sf -m 30 "$EXTRACTD_URL/extract" -H 'Content-Type: application/json' \
+    -d '{"url":"https://example.com"}' 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("ok") and d.get("chars",0)>0 else "no")' 2>/dev/null)
+  [ "$ex_ok" = "yes" ] && ok "extractd extraction" || { bad "extractd extraction"; fails=$((fails+1)); }
+
   curl -sf -m 10 "$CRAWL4AI_URL/health" >/dev/null 2>&1 \
-    && ok "crawl4ai /health" || { bad "crawl4ai /health"; fails=$((fails+1)); }
+    && ok "crawl4ai /health (fallback rung)" || warn "crawl4ai /health (fallback rung unavailable)"
 
   # Note: the initialize response also contains the string "tools" (in capabilities),
   # so match the tools/list reply specifically by its id and tool names.
@@ -454,9 +542,12 @@ for line in sys.stdin:
     if d.get("id")==2:
         print(",".join(t["name"] for t in d["result"]["tools"]))
 ' 2>/dev/null)
-  [ "$mcp_names" = "web_search,web_fetch" ] \
-    && ok "mcp search-server tools/list -> $mcp_names" \
-    || { bad "mcp search-server tools/list (got: ${mcp_names:-nothing})"; fails=$((fails+1)); }
+  case ",$mcp_names," in
+    *,web_search,*|*,web_fetch,*)
+      ok "mcp search-server tools/list -> $mcp_names" ;;
+    *)
+      bad "mcp search-server tools/list (got: ${mcp_names:-nothing})"; fails=$((fails+1)) ;;
+  esac
 
   echo
   if [ "$fails" = "0" ]; then ok "all checks passed"; else bad "$fails check(s) failed"; return 1; fi

@@ -4,7 +4,7 @@
 // Tools:
 //   web_search     - SearXNG JSON search, optionally deep (fetch+extract top N)
 //                    and optionally summarized. Degrades to titles+snippets.
-//   web_fetch      - crawl4ai /md readability extraction for a single URL.
+//   web_fetch      - readability extraction for a single URL, via the extraction ladder.
 //   deep_research  - multi-query research cascade: expands a topic into sub-queries,
 //                    searches and extracts each, summarizes the branches concurrently,
 //                    then synthesizes one cited report.
@@ -56,6 +56,7 @@ const fileEnv = loadEnvFile(path.join(ROOT, ".env"));
 const env = (k, d) => process.env[k] ?? fileEnv[k] ?? d;
 
 const SEARXNG_URL = env("SEARXNG_URL", "http://127.0.0.1:8080").replace(/\/$/, "");
+const EXTRACTD_URL = env("EXTRACTD_URL", "http://127.0.0.1:11236").replace(/\/$/, "");
 const CRAWL4AI_URL = env("CRAWL4AI_URL", "http://127.0.0.1:11235").replace(/\/$/, "");
 const GROQ_MODEL = env("GROQ_MODEL", "llama-3.3-70b-versatile");
 const GROQ_BASE = env("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/$/, "");
@@ -294,6 +295,41 @@ async function searxSearch(query, count) {
   return last.results;
 }
 
+/**
+ * Extraction ladder. Rung 1 is extractd, a native concurrent fetch+readability
+ * service that handles static and server-rendered pages for a fraction of the cost
+ * of a browser. Rung 2 is crawl4ai, a headless-Chromium extractor that gets what
+ * genuinely needs JS execution. Rung 1 reports failure rather than guessing, so a
+ * page it cannot handle falls through cleanly.
+ */
+async function extractdOne(url, maxChars) {
+  const res = await withTimeout(FETCH_TIMEOUT_MS, (signal) =>
+    fetch(`${EXTRACTD_URL}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, max_chars: maxChars }),
+      signal,
+    }),
+  );
+  if (!res.ok) throw new Error(`extractd ${res.status}`);
+  const d = await res.json();
+  if (!d.ok) throw new Error(d.error || "extractd could not render the page");
+  return { text: (d.content || "").trim(), title: d.title || "" };
+}
+
+async function extractdBatch(urls, maxChars) {
+  const res = await withTimeout(FETCH_TIMEOUT_MS * 2, (signal) =>
+    fetch(`${EXTRACTD_URL}/extract_batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls, max_chars: maxChars }),
+      signal,
+    }),
+  );
+  if (!res.ok) throw new Error(`extractd ${res.status}`);
+  return res.json();
+}
+
 async function crawlExtract(url) {
   const res = await withTimeout(FETCH_TIMEOUT_MS, (signal) =>
     fetch(`${CRAWL4AI_URL}/md`, {
@@ -309,17 +345,61 @@ async function crawlExtract(url) {
   return (data.markdown || "").trim();
 }
 
-/** Fetch and extract a list of results, dropping the ones that fail. */
-async function extractAll(results, perDocChars = 6000) {
-  const got = await mapLimit(results, EXTRACT_CONCURRENCY, async (r) => {
+/** Single-URL extraction through the ladder. Throws only if every rung fails. */
+async function extractDoc(url, maxChars = 20000) {
+  try {
+    const d = await extractdOne(url, maxChars);
+    if (d.text.length > 0) return d.text;
+    throw new Error("empty document");
+  } catch (e1) {
+    log(`extractd miss for ${url}: ${e1.message} - falling back to browser rung`);
     try {
-      return { ...r, text: (await crawlExtract(r.url)).slice(0, perDocChars) };
-    } catch (e) {
-      log(`extract failed for ${r.url}: ${e.message}`);
-      return null;
+      return (await crawlExtract(url)).slice(0, maxChars);
+    } catch (e2) {
+      throw new Error(`${e1.message}; browser rung: ${e2.message}`);
+    }
+  }
+}
+
+/**
+ * Fetch and extract a list of results, dropping the ones that fail. The whole list
+ * goes to extractd in one batch call (it bounds its own concurrency), and only the
+ * URLs it could not render are retried on the browser rung.
+ */
+async function extractAll(results, perDocChars = 6000) {
+  if (results.length === 0) return [];
+
+  let batch = null;
+  try {
+    batch = await extractdBatch(results.map((r) => r.url), perDocChars);
+  } catch (e) {
+    log(`extractd batch unavailable (${e.message}); using browser rung for all`);
+  }
+
+  const out = new Array(results.length).fill(null);
+  const misses = [];
+
+  results.forEach((r, i) => {
+    const d = batch && batch[i];
+    if (d && d.ok && (d.content || "").trim().length > 0) {
+      out[i] = { ...r, title: r.title || d.title || "", text: d.content.trim() };
+    } else {
+      if (d && d.error) log(`extractd miss for ${r.url}: ${d.error}`);
+      misses.push(i);
     }
   });
-  return got.filter(Boolean);
+
+  if (misses.length > 0) {
+    await mapLimit(misses, EXTRACT_CONCURRENCY, async (i) => {
+      try {
+        out[i] = { ...results[i], text: (await crawlExtract(results[i].url)).slice(0, perDocChars) };
+      } catch (e) {
+        log(`extract failed for ${results[i].url}: ${e.message}`);
+      }
+    });
+  }
+
+  return out.filter(Boolean);
 }
 
 // ---------------------------------------------------------------- tools
@@ -455,7 +535,7 @@ async function doWebFetch(args) {
   const url = String(args.url || "").trim();
   if (!url) throw new Error("url is required");
   const maxChars = Math.min(Math.max(Number(args.max_chars) || 20000, 500), 100000);
-  const text = await crawlExtract(url);
+  const text = await extractDoc(url, maxChars);
   return `# ${url}\n\n${text.slice(0, maxChars)}${text.length > maxChars ? "\n\n_(truncated)_" : ""}`;
 }
 
@@ -680,7 +760,7 @@ async function handle(msg) {
 }
 
 log(
-  `starting: searxng=${SEARXNG_URL} crawl4ai=${CRAWL4AI_URL} ` +
+  `starting: searxng=${SEARXNG_URL} extractd=${EXTRACTD_URL} crawl4ai=${CRAWL4AI_URL} ` +
     `summarizer=${SUMMARIZER_ENABLED ? "enabled" : "disabled"} model=${GROQ_MODEL} mode=${DEFAULT_MODE}`,
 );
 

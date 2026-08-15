@@ -17,3 +17,4 @@ __pycache__/
 # agent working trees keep their own git dirs; don't nest them
 projects/work/*/.git/
 experiments/*/work/*/.git/
+extractor/target/
